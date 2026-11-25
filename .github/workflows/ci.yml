@@ -1,0 +1,55 @@
+name: CI
+
+# Runs on macOS, Linux and Windows, so the program is checked on every system it supports.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - name: Engine format
+        run: cargo fmt --check
+        working-directory: engine
+      - name: Engine lint
+        run: cargo clippy --all-targets -- -D warnings
+        working-directory: engine
+      - name: Engine tests
+        run: cargo test
+        working-directory: engine
+      - name: Engine release build
+        run: cargo build --release --locked
+        working-directory: engine
+      - name: JavaScript syntax
+        run: |
+          node --check ditcopy.js
+          node --check server/server.js
+          node --check ui/app.js
+          node --check mcp/server.js
+      - name: Server and page tests
+        run: node --test "server/*.test.js" "ui/*.test.js"
+      - name: Keep the engine program
+        uses: actions/upload-artifact@v4
+        with:
+          name: ditcopy-engine-${{ matrix.os }}
+          path: |
+            engine/target/release/ditcopy_engine
+            engine/target/release/ditcopy_engine.exe
+          if-no-files-found: ignore

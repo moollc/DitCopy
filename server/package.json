@@ -1,0 +1,13 @@
+{
+  "name": "ditcopy-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DitCopy Phase 1 HTTP server (Node stdlib only)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

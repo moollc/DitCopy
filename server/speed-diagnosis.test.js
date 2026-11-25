@@ -1,0 +1,10 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),D=require('./speed-diagnosis');
+const samples=(a,b)=>a.map((rate,i)=>({destinations:[{destination:'/a',bytes:i*1e9,speedBps:rate},{destination:'/b',bytes:i*1e9,speedBps:b[i]}]}));
+test('simultaneous falls name shared causes and never likely',()=>{const s=D.diagnosis({dest:['/a','/b'],speedSamples:samples([900,900,900,300,300],[900,900,900,300,300])},String);assert.match(s,/All destinations slowed together/);assert.match(s,/source.*computer.*physical disk/);assert(!s.includes('likely'));});
+test('isolated sharp and gradual falls remain possibilities',()=>{assert.match(D.diagnosis({dest:['/a','/b'],speedSamples:samples([900,900,900,300,300],[900,900,900,900,900])},String),/write cache is a possible cause/);assert.match(D.diagnosis({dest:['/a'],speedSamples:samples([900,800,700,600,500],[0,0,0,0,0])},String),/heat is a possible cause/);});
+test('failed destinations are not diagnosed as cache drops and text is plain',()=>{assert.match(D.diagnosis({dest:['/a'],destination_results:[{destinationId:'/a',status:'failed'}],speedSamples:samples([900,900,0],[0,0,0])},String),/destination error/);const s=D.describeLinks([{destination:'/a',type:'USB 3',detail:'USB'}]);assert.equal(s,'/a: USB 3 (USB)');assert(!s.includes('{'));});
+
+test('idle verification pause and finish samples do not suggest a shared slowdown',()=>{const speedSamples=samples([900,900,900],[900,900,900]);for(const speedBps of [0,1,0])speedSamples.push({destinations:['/a','/b'].map(destination=>({destination,bytes:2e9,speedBps}))});assert.equal(D.diagnosis({dest:['/a','/b'],speedSamples},String),'No sustained speed drop in the recorded samples.');});
+
+test('post verification aggregate sample cannot turn a small next file into a cache fall',()=>{const speedSamples=samples([900,900,900],[900,900,900]);speedSamples.push({phase:null,destinations:[{destination:'/a',bytes:2e9+280244,speedBps:60000},{destination:'/b',bytes:2e9,speedBps:0}]});assert.equal(D.diagnosis({dest:['/a','/b'],speedSamples},String),'No sustained speed drop in the recorded samples.');});

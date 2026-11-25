@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DitCopy</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>DitCopy</h1>
+      <p class="tag">FastCopy-like DIT offload · multi-dest · verify · MHL</p>
+    </div>
+    <div id="health" class="health muted">checking…</div>
+  </header>
+
+  <main class="grid">
+    <section class="panel">
+      <div class="row tight">
+        <div class="field">
+          <label for="preset">Preset</label>
+          <select id="preset">
+            <option value="">— custom —</option>
+          </select>
+        </div>
+        <div class="field grow">
+          <label for="job-name">Save as job name</label>
+          <div class="inline">
+            <input id="job-name" type="text" placeholder="card001-dual" spellcheck="false" />
+            <button type="button" id="btn-save">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <label for="src">Source paths <span class="hint">(one per line · or use the Source buttons on a volume below)</span></label>
+      <textarea id="src" class="mono" rows="4" spellcheck="false"></textarea>
+
+      <label for="dest">Destinations <span class="hint">(one per line · multi-dest · or use the Destination buttons below)</span></label>
+      <textarea id="dest" class="mono" rows="3" spellcheck="false"
+        placeholder="/Volumes/RAID/Card001&#10;/Volumes/Backup/Card001"></textarea>
+
+      <div class="row">
+        <div class="field">
+          <label for="mode">Mode</label>
+          <select id="mode">
+            <option value="force">Force overwrite</option>
+            <option value="noexist">No exist (skip if present)</option>
+            <option value="diff">Diff (size/date)</option>
+            <option value="newer">Newer</option>
+            <option value="sync">Sync (destructive)</option>
+            <option value="move">Move (destructive)</option>
+            <option value="delete">Delete (destructive)</option>
+            <option value="verify-only">Verify only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="hash">Hash</label>
+          <select id="hash">
+            <option value="xxh3">xxHash3</option>
+            <option value="xxh64">xxHash64</option>
+            <option value="md5">MD5</option>
+            <option value="sha256">SHA-256</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="speed">Speed</label>
+          <select id="speed">
+            <option value="full">Full</option>
+            <option value="autoslow">Auto slow</option>
+            <option value="90">90%</option>
+            <option value="50">50%</option>
+            <option value="10">10%</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="checks grid-checks">
+        <label class="check"><input type="checkbox" id="verify" checked /> Verify</label>
+        <label class="check"><input type="checkbox" id="perfect-verify" /> Perfect verify</label>
+        <label class="check"><input type="checkbox" id="nonstop" checked /> Nonstop on errors</label>
+        <label class="check"><input type="checkbox" id="cascade" /> Cascade (src→dest0 then src→rest)</label>
+        <label class="check"><input type="checkbox" id="write-mhl" checked /> Write MHL</label>
+        <label class="check"><input type="checkbox" id="write-report" checked /> Write report</label>
+        <label class="check"><input type="checkbox" id="keep-awake" /> Keep awake (caffeinate)</label>
+      </div>
+
+      <details class="filters">
+        <summary>Filters &amp; limits</summary>
+        <div class="row">
+          <div class="field grow">
+            <label for="include">Include <span class="hint">(e.g. *.mov;*.mxf)</span></label>
+            <input id="include" type="text" class="mono" spellcheck="false" />
+          </div>
+          <div class="field grow">
+            <label for="exclude">Exclude <span class="hint">(e.g. *.tmp;.*)</span></label>
+            <input id="exclude" type="text" class="mono" spellcheck="false" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="min-size">Min size (bytes)</label>
+            <input id="min-size" type="number" min="0" placeholder="—" />
+          </div>
+          <div class="field">
+            <label for="max-size">Max size (bytes)</label>
+            <input id="max-size" type="number" min="0" placeholder="—" />
+          </div>
+          <div class="field">
+            <label for="from-date">From date</label>
+            <input id="from-date" type="text" class="mono" placeholder="YYYYMMDD" />
+          </div>
+          <div class="field">
+            <label for="to-date">To date</label>
+            <input id="to-date" type="text" class="mono" placeholder="YYYYMMDD" />
+          </div>
+        </div>
+        <div class="checks grid-checks">
+          <label class="check"><input type="checkbox" id="test-drive-speed" /> Test drive speed before copy (64 MB per destination)</label>
+        </div>
+        <div class="row">
+          <div class="field"><label for="cooldown-seconds">Cool down seconds (0 off)</label><input id="cooldown-seconds" type="number" min="0" value="0" /></div>
+          <div class="field"><label for="cooldown-every-gb">Every GB</label><input id="cooldown-every-gb" type="number" min="0" value="0" /></div>
+          <div class="field"><label for="cooldown-drop-percent">Speed drop %</label><input id="cooldown-drop-percent" type="number" min="1" max="99" value="20" /></div>
+        </div>
+      </details>
+
+      <div class="actions">
+        <button type="button" id="btn-run" class="primary">Execute</button>
+        <button type="button" id="btn-pause" disabled>Pause after file</button>
+        <button type="button" id="btn-stop" class="danger" disabled>Stop after file</button>
+        <button type="button" id="btn-cancel" class="danger" disabled>Cancel now</button>
+        <button type="button" id="btn-resume" class="primary hidden" disabled>Resume</button>
+        <button type="button" id="btn-retry-failed" class="primary hidden" disabled>Retry failed destinations</button>
+        <button type="button" id="btn-volumes">Refresh volumes</button>
+      </div>
+
+      <div id="check" class="check-panel" aria-live="polite">
+        <div class="label-row">Resolved paths <span class="hint">(what Execute will use)</span></div>
+        <div id="check-body" class="mono muted">Add a source and a destination.</div>
+      </div>
+
+      <div class="volumes-wrap">
+        <div class="label-row">Volumes <span class="hint">(pick a role per volume · capacity refreshes every 15s)</span></div>
+        <ul id="volumes" class="volumes"></ul>
+        <div id="picker" class="picker hidden" role="dialog" aria-label="Choose folder">
+          <div class="picker-head">
+            <strong id="picker-title">Choose folder</strong>
+            <span id="picker-path" class="mono muted"></span>
+          </div>
+          <ul id="picker-list" class="picker-list mono"></ul>
+          <div class="actions">
+            <button type="button" id="picker-up">Up</button>
+            <button type="button" id="picker-source">Use as source</button>
+            <button type="button" id="picker-dest">Use as destination</button>
+            <button type="button" id="picker-close">Close</button>
+          </div>
+          <div id="picker-note" class="hint"></div>
+        </div>
+      </div>
+
+      <div class="drive-eject-wrap">
+        <div class="label-row">Drive safety <span class="hint">(checks active copies and open files before ejecting)</span></div>
+        <ul id="drive-actions" class="drive-actions mono"></ul>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Progress</h2>
+      <div id="job-meta" class="meta muted">No job yet</div>
+      <div class="statebar">
+        <span id="state-line" class="state idle">Idle</span>
+        <span id="activity-age" class="muted mono"></span>
+      </div>
+      <div class="stats">
+        <div><span class="k">Files</span> <span id="stat-files" class="mono">—</span></div>
+        <div><span class="k">Bytes</span> <span id="stat-bytes" class="mono">—</span></div>
+        <div><span class="k">Speed</span> <span id="stat-speed" class="mono">—</span></div>
+      </div>
+      <div id="link-warning" class="link-warning hidden"></div>
+      <h3>Speed by destination</h3>
+      <div class="table-wrap"><table id="speed-table"><thead></thead><tbody></tbody></table></div>
+      <div id="speed-diagnosis" class="hint"></div>
+      <div class="current">
+        <span class="k">Current</span>
+        <div id="stat-current" class="mono path">—</div>
+      </div>
+      <div class="bar-wrap"><div id="bar" class="bar"></div></div>
+      <div id="pct" class="pct mono muted">—</div>
+      <div class="eta">
+        <span class="k">ETA</span> <span id="eta" class="mono">—</span>
+        <span id="eta-note" class="hint"></span>
+      </div>
+      <h3>Destinations</h3>
+      <ul id="dests" class="dests" aria-live="polite"></ul>
+      <div id="report-link-wrap" class="report-link muted hidden">
+        Report: <a id="report-link" href="#" target="_blank" rel="noopener">open HTML</a>
+        <span id="report-txt" class="hint"></span>
+      </div>
+      <h3>Activity</h3>
+      <ul id="activity" class="activity mono"></ul>
+      <h3>Engine diagnostics</h3>
+      <ul id="diagnostics" class="activity diagnostics mono"></ul>
+      <h3>Errors</h3>
+      <ul id="errors" class="errors mono"></ul>
+      <h3>Summary</h3>
+      <pre id="summary" class="summary mono">—</pre>
+    </section>
+  </main>
+
+  <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>Confirm destructive mode</h2>
+      <p id="confirm-text" class="muted">This mode can delete or move data.</p>
+      <div class="actions">
+        <button type="button" id="confirm-ok" class="danger">Confirm &amp; run</button>
+        <button type="button" id="confirm-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/dest-view.js"></script>
+  <script src="/attach-rule.js"></script>
+  <script src="/job-form.js"></script>
+  <script src="/roles.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

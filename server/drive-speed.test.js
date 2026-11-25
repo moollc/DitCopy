@@ -1,0 +1,4 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),{testDriveSpeed}=require('./drive-speed');
+test('uncached speed probe runs outside the server event loop',async()=>{let tick=false;const pending=testDriveSpeed('/tmp/ditcopy-test-b5-fix1/probe','test','engine',async(bin,args)=>{assert.equal(args[0],'probe-drive');await new Promise(r=>setTimeout(r,20));return JSON.stringify({cacheBypass:true,readBps:10});});setTimeout(()=>tick=true,0);assert.equal((await pending).cacheBypass,true);assert(tick);});
+test('probe errors become destination specific results',async()=>{const r=await testDriveSpeed('/tmp/ditcopy-test-b5-fix1/probe','test','engine',async()=>{throw Error('cache bypass refused');});assert.equal(r.destination,'/tmp/ditcopy-test-b5-fix1/probe');assert.match(r.error,/cache bypass refused/);});

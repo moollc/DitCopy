@@ -1,0 +1,19 @@
+{
+  "name": "ditcopy-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DitCopy MCP stdio server",
+  "type": "module",
+  "bin": {
+    "ditcopy-mcp": "./server.js"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  }
+}

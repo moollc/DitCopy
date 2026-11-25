@@ -1,0 +1,6 @@
+app/DitCopy.app/
+app/icon-preview.png
+logs/
+jobs/
+node_modules/
+.DS_Store
