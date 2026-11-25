@@ -72,6 +72,15 @@ test("the release builds nothing without the audit and the clean environment smo
   assert.ok(!/continue-on-error:\s*true/.test(yml), "a failing check must fail the release");
 });
 
+test("a version given by hand makes a private draft, only a tag publishes straight away", () => {
+  const yml = fs.readFileSync(path.join(ROOT, ".github", "workflows", "release.yml"), "utf8");
+  assert.match(yml, /workflow_dispatch:\s+inputs:\s+version:/, "the version is an input of the manual run");
+  assert.match(yml, /gh release create "\$tag" files\/\* --repo "\$\{GITHUB_REPOSITORY\}" --draft/, "a manual run only makes a draft");
+  const draftLine = yml.split("\n").find((l) => l.includes("--draft"));
+  assert.ok(draftLine && !/--latest|--draft=false/.test(draftLine), "a manual run never publishes");
+  assert.match(yml, /already exists/, "publishing a draft must not trigger a second release");
+});
+
 test("every installer is built, installed for real and tested from where it installs", () => {
   const yml = fs.readFileSync(path.join(ROOT, ".github", "workflows", "release.yml"), "utf8");
   assert.match(yml, /audit-bundle\.js --app dist\/app\/DitCopy\.app/, "the Mac app is audited");

@@ -1,7 +1,9 @@
 name: Release
 
 # Builds a download for each system and proves each one works on its own system before it is offered.
-# Run by hand (Actions, Release, Run workflow) to get the files as artifacts. Pushing a tag such as v0.1.0 also publishes them.
+# Run by hand (Actions, Release, Run workflow) to get the files as artifacts. Give a version (for example 0.1.0) to also put
+# them in a private DRAFT release that only people with access to the repo can see. Test those exact files, then publish the
+# draft: the public gets what was tested, nothing is rebuilt. Pushing a tag such as v0.1.0 publishes straight away.
 #
 # Every download is audited for leftovers from the build machine, then run with a scrubbed environment (system PATH only,
 # an empty home folder) through a real copy job. The installers are installed for real and tested from where they install.
@@ -9,6 +11,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version for a private draft release, for example 0.1.0. Leave empty to only build the files."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -39,7 +46,9 @@ jobs:
           workspaces: engine
       - name: Version
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then v="${GITHUB_REF_NAME#v}"; d="$v"; else v="dev-${GITHUB_SHA::7}"; d="0.0.0~dev${GITHUB_SHA::7}"; fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then v="${GITHUB_REF_NAME#v}"; d="$v"
+          elif [ -n "${{ inputs.version }}" ]; then v="${{ inputs.version }}"; d="$v"
+          else v="dev-${GITHUB_SHA::7}"; d="0.0.0~dev${GITHUB_SHA::7}"; fi
           echo "VERSION=$v" >> "$GITHUB_ENV"
           echo "DEB_VERSION=$d" >> "$GITHUB_ENV"
           echo "DIR=dist/DitCopy-$v-${{ matrix.label }}" >> "$GITHUB_ENV"
@@ -122,8 +131,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish a release
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: Release files
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -134,4 +143,14 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" files/* --repo "${GITHUB_REPOSITORY}" --title "DitCopy ${GITHUB_REF_NAME#v}" --generate-notes
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+            # Publishing a draft creates this tag. The release is already there, so there is nothing more to do.
+            if gh release view "$tag" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then echo "release $tag already exists"; exit 0; fi
+            gh release create "$tag" files/* --repo "${GITHUB_REPOSITORY}" --title "DitCopy ${tag#v}" --generate-notes
+          else
+            tag="v${{ inputs.version }}"
+            # A draft stays private and creates no tag until it is published, so it can be tested first.
+            gh release create "$tag" files/* --repo "${GITHUB_REPOSITORY}" --draft --target "${GITHUB_SHA}" --title "DitCopy ${{ inputs.version }}" --generate-notes
+          fi
