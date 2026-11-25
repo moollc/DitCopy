@@ -42,12 +42,13 @@ const PORT = parsePort(process.env.DITCOPY_PORT);
 
 const ROOT = path.resolve(__dirname, "..");
 const UI_DIR = path.join(ROOT, "ui");
-const LOGS_DIR = path.join(ROOT, "logs");
+const DATA_DIR = platform.dataDir(ROOT);
+const LOGS_DIR = path.join(DATA_DIR, "logs");
 const REPORTS_DIR = path.join(LOGS_DIR, "reports");
-const JOBS_DIR = path.join(ROOT, "jobs");
+const JOBS_DIR = path.join(DATA_DIR, "jobs");
 const PRESETS_DIR = path.join(ROOT, "presets");
 const ENGINE =
-  process.env.DITCOPY_ENGINE || path.join(ROOT, "engine", "target", "release", platform.engineFileName());
+  process.env.DITCOPY_ENGINE || platform.defaultEnginePath(ROOT);
 const ACTIVITY_MAX = 200;
 const DIAGNOSTICS_MAX = 100;
 

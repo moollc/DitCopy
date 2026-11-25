@@ -16,6 +16,28 @@ function engineFileName(platform = HERE) {
   return isWin(platform) ? "ditcopy_engine.exe" : "ditcopy_engine";
 }
 
+/** The engine program: next to a source build (engine/target/release) or in a packaged copy (engine/). */
+function defaultEnginePath(root, platform = HERE) {
+  const name = engineFileName(platform);
+  const candidates = [path.join(root, "engine", "target", "release", name), path.join(root, "engine", name)];
+  return candidates.find((c) => fs.existsSync(c)) || candidates[0];
+}
+
+/** A downloaded copy carries bundle.json. It may sit in a folder the person cannot write to, so it keeps its data elsewhere. */
+function isBundled(root) {
+  return fs.existsSync(path.join(root, "bundle.json"));
+}
+
+/** Where logs, saved jobs and reports live. DITCOPY_DATA overrides. A source checkout keeps them in its own folder. */
+function dataDir(root, env = process.env, platform = HERE) {
+  if (env.DITCOPY_DATA) return env.DITCOPY_DATA;
+  if (!isBundled(root)) return root;
+  const home = env.HOME || env.USERPROFILE || require("node:os").homedir();
+  if (platform === "darwin") return path.join(home, "Library", "Application Support", "DitCopy");
+  if (isWin(platform)) return path.join(env.APPDATA || path.join(home, "AppData", "Roaming"), "DitCopy");
+  return path.join(env.XDG_DATA_HOME || path.join(home, ".local", "share"), "ditcopy");
+}
+
 /** Mounts that belong to the running system, never offered as a copy destination. */
 function startupMounts(platform = HERE, env = process.env) {
   if (platform === "darwin") return new Set(["/", "/System/Volumes/Data"]);
@@ -187,6 +209,9 @@ function openCommand(url, platform = HERE) {
 module.exports = {
   HERE,
   engineFileName,
+  defaultEnginePath,
+  isBundled,
+  dataDir,
   startupMounts,
   mountParents,
   externalMountOf,

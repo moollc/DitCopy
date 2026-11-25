@@ -32,11 +32,11 @@ function suffixFor(port) {
 }
 
 function enginePath(env = process.env, plat = platform.HERE) {
-  return env.DITCOPY_ENGINE || path.join(ROOT, "engine", "target", "release", platform.engineFileName(plat));
+  return env.DITCOPY_ENGINE || platform.defaultEnginePath(ROOT, plat);
 }
 
 function paths(port) {
-  const logs = path.join(ROOT, "logs");
+  const logs = path.join(platform.dataDir(ROOT), "logs");
   const suffix = suffixFor(port);
   return { logs, pid: path.join(logs, `server${suffix}.pid`), log: path.join(logs, `server${suffix}.log`) };
 }

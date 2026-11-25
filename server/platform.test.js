@@ -112,3 +112,40 @@ test("the browser opens with the system command", () => {
   assert.strictEqual(P.openCommand("http://x", "linux").file, "xdg-open");
   assert.deepStrictEqual(P.openCommand("http://x", "win32").args, ["/c", "start", "", "http://x"]);
 });
+
+test("a downloaded copy keeps its data in the user's folder, a source checkout keeps it beside the code", () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const source = fs.mkdtempSync(path.join(os.tmpdir(), "ditcopy-src-"));
+  const bundled = fs.mkdtempSync(path.join(os.tmpdir(), "ditcopy-bundle-"));
+  fs.writeFileSync(path.join(bundled, "bundle.json"), "{}");
+  try {
+    assert.strictEqual(P.dataDir(source, { HOME: "/h" }, "darwin"), source);
+    assert.strictEqual(P.dataDir(bundled, { HOME: "/h" }, "darwin"), path.join("/h", "Library", "Application Support", "DitCopy"));
+    assert.strictEqual(P.dataDir(bundled, { HOME: "/h", XDG_DATA_HOME: "/x" }, "linux"), path.join("/x", "ditcopy"));
+    assert.strictEqual(P.dataDir(bundled, { HOME: "/h" }, "linux"), path.join("/h", ".local", "share", "ditcopy"));
+    assert.strictEqual(P.dataDir(bundled, { APPDATA: "C:\\Users\\d\\AppData\\Roaming", USERPROFILE: "C:\\Users\\d" }, "win32"), path.join("C:\\Users\\d\\AppData\\Roaming", "DitCopy"));
+    assert.strictEqual(P.dataDir(bundled, { DITCOPY_DATA: "/elsewhere" }, "linux"), "/elsewhere", "DITCOPY_DATA wins");
+    assert.strictEqual(P.isBundled(bundled), true);
+    assert.strictEqual(P.isBundled(source), false);
+  } finally {
+    fs.rmSync(source, { recursive: true, force: true });
+    fs.rmSync(bundled, { recursive: true, force: true });
+  }
+});
+
+test("the engine is found next to a build or inside a packaged copy", () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ditcopy-eng-"));
+  try {
+    assert.ok(P.defaultEnginePath(root, "linux").endsWith(path.join("engine", "target", "release", "ditcopy_engine")), "build location when nothing exists");
+    fs.mkdirSync(path.join(root, "engine"), { recursive: true });
+    fs.writeFileSync(path.join(root, "engine", "ditcopy_engine.exe"), "x");
+    assert.strictEqual(P.defaultEnginePath(root, "win32"), path.join(root, "engine", "ditcopy_engine.exe"));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
