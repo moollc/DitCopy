@@ -4,5 +4,5 @@ PATH="$HOME/.cargo/bin:$PATH"; export PATH
 cd "$(dirname "$0")" || exit 1
 # A downloaded copy carries its own Node in runtime/. A source checkout uses the Node you installed.
 NODE=node; [ -x "./runtime/node" ] && NODE="./runtime/node"
-command -v "$NODE" >/dev/null 2>&1 || { echo "Node.js is required: https://nodejs.org"; exit 1; }
+command -v "$NODE" >/dev/null 2>&1 || { echo "This is the developer version, and it needs Node.js. To use DitCopy without installing anything, download the app: https://github.com/moollc/DitCopy/releases/latest"; exit 1; }
 exec "$NODE" ditcopy.js stop "$@"

@@ -81,7 +81,7 @@ function ensureEngine(engine) {
   const env = withCargoPath();
   const r = spawnSync("cargo", ["build", "--release", "--locked"], { cwd: path.join(ROOT, "engine"), stdio: "inherit", env, shell: platform.HERE === "win32" });
   if (r.error || r.status !== 0 || !fs.existsSync(engine)) {
-    throw new Error("The engine is not built and cargo could not build it. Install Rust from https://rustup.rs, then run this again, or set DITCOPY_ENGINE to a built engine program.");
+    throw new Error("This is the developer version, and it needs Rust to build its copy engine. To use DitCopy without installing anything, download the app for your system: https://github.com/moollc/DitCopy/releases/latest . Developers can install Rust from https://rustup.rs and run this again.");
   }
 }
 

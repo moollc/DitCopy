@@ -84,12 +84,25 @@ test("every installer is built, installed for real and tested from where it inst
   assert.doesNotMatch(yml, /os: ubuntu-latest[^\n]*linux-x64/, "not on ubuntu-latest, whose glibc is too new for older Linux");
 });
 
+test("every way the developer version can fail to start tells a normal person where to download the app, and Mac keeps the window open", () => {
+  const link = "https://github.com/moollc/DitCopy/releases/latest";
+  for (const f of ["start.command", "stop.command", "start.sh", "stop.sh", "start.bat", "stop.bat", "ditcopy.js"]) {
+    assert.ok(fs.readFileSync(path.join(ROOT, f), "utf8").includes(link), `${f} must point at the downloads when it cannot run`);
+  }
+  for (const f of ["start.command", "stop.command"]) {
+    assert.match(fs.readFileSync(path.join(ROOT, f), "utf8"), /Press Enter to close/, `${f} must keep its window open on failure so the message can be read`);
+  }
+  assert.match(fs.readFileSync(path.join(ROOT, "start.bat"), "utf8"), /pause/, "start.bat must pause on failure");
+});
+
 test("the Mac app finds its own packaged copy and carries no path to the machine that built it", () => {
   const swift = fs.readFileSync(path.join(ROOT, "app", "main.swift"), "utf8");
   assert.match(swift, /Resources\?\.appendingPathComponent\("ditcopy"\)|resourceURL\?\.appendingPathComponent\("ditcopy"\)/, "the app looks inside itself first");
   const build = fs.readFileSync(path.join(ROOT, "app", "build-app.sh"), "utf8");
   assert.match(build, /--bundle/, "the build can make a self contained app");
   assert.match(build, /ROOT_KEY=""/, "a self contained app has no DitCopyRoot key");
+  // CI passes relative paths. They must be read before the script changes into its own folder, or they point nowhere.
+  assert.ok(build.indexOf("--bundle)") < build.indexOf('cd "$(dirname "$0")"'), "options are read before changing folder");
 });
 
 test("the smoke test runs in a scrubbed environment and the packager refuses a Node that needs the build machine", () => {

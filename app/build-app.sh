@@ -5,10 +5,9 @@
 #                                         a self contained app that carries the packaged copy <dir> (see scripts/package.js)
 #                                         inside itself, with no path to this machine, for downloading
 set -euo pipefail
-cd "$(dirname "$0")"
-ROOT="$(cd .. && pwd)"
+# Paths given as options are relative to where the script was run from, so they are read before changing folder.
 BUNDLE=""
-OUT="$(pwd)"
+OUT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --bundle) BUNDLE="$(cd "$2" && pwd)"; shift 2 ;;
@@ -16,6 +15,9 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option $1"; exit 2 ;;
   esac
 done
+cd "$(dirname "$0")"
+ROOT="$(cd .. && pwd)"
+[[ -n "$OUT" ]] || OUT="$(pwd)"
 APP="$OUT/DitCopy.app"
 rm -rf "$APP" 2>/dev/null || true
 VERSION="0.1"
