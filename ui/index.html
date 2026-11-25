@@ -9,15 +9,13 @@
 </head>
 <body>
   <header class="top">
-    <div>
-      <h1>DitCopy</h1>
-      <p class="tag">FastCopy-like DIT offload · multi-dest · verify · MHL</p>
-    </div>
+    <div class="brand"><h1>DitCopy</h1><span class="tag">multi destination offload, verify, MHL</span></div>
     <div id="health" class="health muted">checking…</div>
   </header>
 
   <main class="grid">
-    <section class="panel">
+    <section class="panel setup">
+      <div class="scroll">
       <div class="row tight">
         <div class="field">
           <label for="preset">Preset</label>
@@ -35,10 +33,10 @@
       </div>
 
       <label for="src">Source paths <span class="hint">(one per line · or use the Source buttons on a volume below)</span></label>
-      <textarea id="src" class="mono" rows="4" spellcheck="false"></textarea>
+      <textarea id="src" class="mono" rows="3" spellcheck="false"></textarea>
 
       <label for="dest">Destinations <span class="hint">(one per line · multi-dest · or use the Destination buttons below)</span></label>
-      <textarea id="dest" class="mono" rows="3" spellcheck="false"
+      <textarea id="dest" class="mono" rows="2" spellcheck="false"
         placeholder="/Volumes/RAID/Card001&#10;/Volumes/Backup/Card001"></textarea>
 
       <div class="row">
@@ -83,7 +81,8 @@
         <label class="check"><input type="checkbox" id="cascade" /> Cascade (src→dest0 then src→rest)</label>
         <label class="check"><input type="checkbox" id="write-mhl" checked /> Write MHL</label>
         <label class="check"><input type="checkbox" id="write-report" checked /> Write report</label>
-        <label class="check"><input type="checkbox" id="keep-awake" /> Keep awake (caffeinate)</label>
+        <label class="check"><input type="checkbox" id="keep-awake" /> Keep awake during copy</label>
+        <label class="check" title="Skips .DS_Store, ._ files, .Spotlight-V100, .Trashes, Thumbs.db and similar. Turn off to copy everything."><input type="checkbox" id="skip-system-files" checked /> Skip system files</label>
       </div>
 
       <details class="filters">
@@ -126,7 +125,41 @@
         </div>
       </details>
 
-      <div class="actions">
+
+      <div id="check" class="check-panel" aria-live="polite">
+        <div class="label-row">Resolved paths <span class="hint">(what Execute will use)</span></div>
+        <div id="check-body" class="mono muted">Add a source and a destination.</div>
+      </div>
+
+      <details class="fold" open>
+        <summary>Drives <span class="hint">pick a role per drive, capacity refreshes every 15 s</span></summary>
+        <ul id="volumes" class="volumes"></ul>
+        <div id="picker" class="picker hidden" role="dialog" aria-label="Choose folder">
+          <div class="picker-head">
+            <strong id="picker-title">Choose folder</strong>
+            <span id="picker-path" class="mono muted"></span>
+          </div>
+          <ul id="picker-list" class="picker-list mono"></ul>
+          <div class="picker-tools">
+            <button type="button" id="picker-up">Up</button>
+            <input id="picker-newname" type="text" placeholder="New folder name" spellcheck="false" autocomplete="off" />
+            <button type="button" id="picker-newfolder" title="Makes the folder here, then opens it. Only on drives that can be a destination.">New folder</button>
+          </div>
+          <div class="actions">
+            <button type="button" id="picker-source">Use as source</button>
+            <button type="button" id="picker-dest">Use as destination</button>
+            <button type="button" id="picker-close">Close</button>
+          </div>
+          <div id="picker-note" class="hint"></div>
+        </div>
+      </details>
+
+      <details class="fold" open>
+        <summary>Eject <span class="hint">checks active copies and open files first</span></summary>
+        <ul id="drive-actions" class="drive-actions mono"></ul>
+      </details>
+      </div>
+      <div class="actions footer">
         <button type="button" id="btn-run" class="primary">Execute</button>
         <button type="button" id="btn-pause" disabled>Pause after file</button>
         <button type="button" id="btn-stop" class="danger" disabled>Stop after file</button>
@@ -135,77 +168,57 @@
         <button type="button" id="btn-retry-failed" class="primary hidden" disabled>Retry failed destinations</button>
         <button type="button" id="btn-volumes">Refresh volumes</button>
       </div>
-
-      <div id="check" class="check-panel" aria-live="polite">
-        <div class="label-row">Resolved paths <span class="hint">(what Execute will use)</span></div>
-        <div id="check-body" class="mono muted">Add a source and a destination.</div>
-      </div>
-
-      <div class="volumes-wrap">
-        <div class="label-row">Volumes <span class="hint">(pick a role per volume · capacity refreshes every 15s)</span></div>
-        <ul id="volumes" class="volumes"></ul>
-        <div id="picker" class="picker hidden" role="dialog" aria-label="Choose folder">
-          <div class="picker-head">
-            <strong id="picker-title">Choose folder</strong>
-            <span id="picker-path" class="mono muted"></span>
-          </div>
-          <ul id="picker-list" class="picker-list mono"></ul>
-          <div class="actions">
-            <button type="button" id="picker-up">Up</button>
-            <button type="button" id="picker-source">Use as source</button>
-            <button type="button" id="picker-dest">Use as destination</button>
-            <button type="button" id="picker-close">Close</button>
-          </div>
-          <div id="picker-note" class="hint"></div>
-        </div>
-      </div>
-
-      <div class="drive-eject-wrap">
-        <div class="label-row">Drive safety <span class="hint">(checks active copies and open files before ejecting)</span></div>
-        <ul id="drive-actions" class="drive-actions mono"></ul>
-      </div>
     </section>
 
-    <section class="panel">
-      <h2>Progress</h2>
+    <section class="panel progress">
+      <div class="phead"><h2>Progress</h2><span id="state-line" class="state idle">Idle</span><span id="activity-age" class="muted mono"></span></div>
       <div id="job-meta" class="meta muted">No job yet</div>
-      <div class="statebar">
-        <span id="state-line" class="state idle">Idle</span>
-        <span id="activity-age" class="muted mono"></span>
-      </div>
       <div class="stats">
         <div><span class="k">Files</span> <span id="stat-files" class="mono">—</span></div>
         <div><span class="k">Bytes</span> <span id="stat-bytes" class="mono">—</span></div>
         <div><span class="k">Speed</span> <span id="stat-speed" class="mono">—</span></div>
       </div>
       <div id="link-warning" class="link-warning hidden"></div>
-      <h3>Speed by destination</h3>
-      <div class="table-wrap"><table id="speed-table"><thead></thead><tbody></tbody></table></div>
-      <div id="speed-diagnosis" class="hint"></div>
-      <div class="current">
-        <span class="k">Current</span>
-        <div id="stat-current" class="mono path">—</div>
-      </div>
       <div class="bar-wrap"><div id="bar" class="bar"></div></div>
-      <div id="pct" class="pct mono muted">—</div>
-      <div class="eta">
-        <span class="k">ETA</span> <span id="eta" class="mono">—</span>
-        <span id="eta-note" class="hint"></span>
+      <div class="barline">
+        <span id="pct" class="pct mono muted">—</span>
+        <span class="eta"><span class="k">ETA</span> <span id="eta" class="mono">—</span> <span id="eta-note" class="hint"></span></span>
       </div>
-      <h3>Destinations</h3>
-      <ul id="dests" class="dests" aria-live="polite"></ul>
+      <div class="current"><span class="k">Current</span> <span id="stat-current" class="mono path">—</span></div>
+
+      <details class="fold" open>
+        <summary>Destinations</summary>
+        <ul id="dests" class="dests" aria-live="polite"></ul>
+      </details>
       <div id="report-link-wrap" class="report-link muted hidden">
         Report: <a id="report-link" href="#" target="_blank" rel="noopener">open HTML</a>
         <span id="report-txt" class="hint"></span>
       </div>
-      <h3>Activity</h3>
-      <ul id="activity" class="activity mono"></ul>
-      <h3>Engine diagnostics</h3>
-      <ul id="diagnostics" class="activity diagnostics mono"></ul>
-      <h3>Errors</h3>
-      <ul id="errors" class="errors mono"></ul>
-      <h3>Summary</h3>
-      <pre id="summary" class="summary mono">—</pre>
+      <details class="fold">
+        <summary>Speed by destination</summary>
+        <div class="table-wrap"><table id="speed-table"><thead></thead><tbody></tbody></table></div>
+        <div id="speed-diagnosis" class="hint"></div>
+      </details>
+      <details class="fold" id="errors-fold">
+        <summary>Errors <span id="errors-count" class="badge"></span></summary>
+        <ul id="errors" class="errors mono"></ul>
+      </details>
+      <details class="fold">
+        <summary>Activity</summary>
+        <ul id="activity" class="activity mono"></ul>
+      </details>
+      <details class="fold">
+        <summary>Engine diagnostics</summary>
+        <ul id="diagnostics" class="activity diagnostics mono"></ul>
+      </details>
+      <details class="fold" id="history-fold">
+        <summary>History <span class="hint">earlier jobs, click one to look at it</span></summary>
+        <ul id="history" class="history"></ul>
+      </details>
+      <details class="fold">
+        <summary>Summary</summary>
+        <pre id="summary" class="summary mono">—</pre>
+      </details>
     </section>
   </main>
 
@@ -223,6 +236,7 @@
   <script src="/dest-view.js"></script>
   <script src="/attach-rule.js"></script>
   <script src="/job-form.js"></script>
+  <script src="/draft.js"></script>
   <script src="/roles.js"></script>
   <script src="/app.js"></script>
 </body>

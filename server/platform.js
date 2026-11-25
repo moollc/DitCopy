@@ -72,8 +72,9 @@ function externalMountOf(p, platform = HERE, env = process.env) {
 
 /** True when `real` is the mount itself or inside it. Windows paths compare without regard to case. */
 function insideMount(real, mount, platform = HERE) {
-  const a = isWin(platform) ? String(real).toLowerCase() : String(real);
-  const b = isWin(platform) ? String(mount).toLowerCase() : String(mount);
+  // NFC first: macOS can spell an accented name two ways (e and an accent, or one accented letter), and the two must match.
+  const a = isWin(platform) ? String(real).normalize("NFC").toLowerCase() : String(real).normalize("NFC");
+  const b = isWin(platform) ? String(mount).normalize("NFC").toLowerCase() : String(mount).normalize("NFC");
   const sep = isWin(platform) ? "\\" : "/";
   const base = b.endsWith(sep) ? b : b + sep;
   return a === b || a === base.slice(0, -1) || a.startsWith(base);
@@ -199,6 +200,13 @@ function capabilities(platform = HERE) {
   };
 }
 
+/** Opens a folder in Finder, Explorer or the file manager. */
+function revealCommand(folder, platform = HERE) {
+  if (platform === "darwin") return { file: "open", args: [folder] };
+  if (isWin(platform)) return { file: "explorer.exe", args: [folder] };
+  return { file: "xdg-open", args: [folder] };
+}
+
 /** Opens a page in the default browser. */
 function openCommand(url, platform = HERE) {
   if (platform === "darwin") return { file: "open", args: [url] };
@@ -225,6 +233,7 @@ module.exports = {
   startKeepAwake,
   capabilities,
   openCommand,
+  revealCommand,
   fileExists: (p) => fs.existsSync(p),
   sep: path.sep,
 };

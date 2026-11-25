@@ -149,3 +149,9 @@ test("the engine is found next to a build or inside a packaged copy", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a destination opens in the system's file manager", () => {
+  assert.deepStrictEqual(P.revealCommand("/Volumes/Kane/EFJ", "darwin"), { file: "open", args: ["/Volumes/Kane/EFJ"] });
+  assert.strictEqual(P.revealCommand("/media/dit/KANE", "linux").file, "xdg-open");
+  assert.deepStrictEqual(P.revealCommand("D:\\EFJ", "win32"), { file: "explorer.exe", args: ["D:\\EFJ"] });
+});

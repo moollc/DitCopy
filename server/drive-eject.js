@@ -165,7 +165,9 @@ function createDriveEjectService(runCommand = run, locatePath = volumes.locateVo
     // wrong and confusing "refusing to eject the startup disk".
     const external = platform.externalMountOf(resolved);
     if (external && !fs.existsSync(external)) throw new Error(`${external} is not mounted, it may already be ejected`);
-    const mountPoint = await mountPointForPath(resolved);
+    // An external drive is found by its own mount point. Going through the drive list first is what once mistook an SD card for
+    // the startup disk. diskutil is the judge of whether it can be ejected, and it refuses the real startup disk itself.
+    const mountPoint = external ? external : await mountPointForPath(resolved);
     if (mountPoint === "/") throw new Error("refusing to eject the startup disk");
     const info = await runCommand("diskutil", ["info", "-plist", mountPoint]);
     const drive = parseDiskInfo(info.stdout, mountPoint);

@@ -1,5 +1,6 @@
 "use strict";
 
+const fs = require("node:fs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
@@ -207,4 +208,15 @@ test("force unmounts when only watchers hold the drive, and refuses when anythin
 test("a drive that is already ejected says it is not mounted, not that it is the startup disk", { skip: process.platform !== "darwin" && "eject is macOS only" }, async () => {
   const service = createDriveEjectService(async () => { throw new Error("should not run any command"); }, async () => ({ mountPoint: "/" }));
   await assert.rejects(service.inspect("/Volumes/DitCopyTestDriveThatIsNotMounted/EFJ"), /is not mounted, it may already be ejected/);
+});
+
+test("an external drive is found by its own /Volumes path, the drive list is never asked", { skip: (process.platform !== "darwin" || !fs.existsSync("/Volumes/Macintosh HD")) && "needs a Mac with /Volumes" }, async () => {
+  // /Volumes/Macintosh HD exists on every Mac, so it stands in for a mounted card. The fake drive list throws if it is used.
+  const service = createDriveEjectService(async (command) => {
+    if (command === "diskutil") return { stdout: info };
+    if (command === "mount") return { stdout: "/dev/disk7s1 on /tmp/ditcopy-test-b4p2/drive (hfs, local)" };
+    throw new Error(`unexpected command ${command}`);
+  }, async () => { throw new Error("the drive list must not be asked for an external drive"); });
+  const drive = await service.inspect("/Volumes/Macintosh HD/anything");
+  assert.equal(drive.wholeDisk, "disk7");
 });

@@ -271,8 +271,8 @@ function fmtBytes(n) {
   const u = ["B", "KB", "MB", "GB", "TB"];
   let v = Number(n);
   let i = 0;
-  while (v >= 1024 && i < u.length - 1) {
-    v /= 1024;
+  while (v >= 1000 && i < u.length - 1) {
+    v /= 1000;
     i++;
   }
   return `${v < 10 && i > 0 ? v.toFixed(2) : v < 100 && i > 0 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
@@ -505,6 +505,7 @@ function jobPublic(job) {
     hash: job.hash,
     include: job.include,
     exclude: job.exclude,
+    skipSystemFiles: job.skipSystemFiles,
     minSize: job.minSize,
     maxSize: job.maxSize,
     fromDate: job.fromDate,
@@ -673,6 +674,11 @@ function serveReports(req, res, pathname) {
   serveFile(res, filePath, REPORTS_DIR);
 }
 
+// Files the system or the card adds that nobody means to copy. Skipped unless the person turns "Skip system files" off.
+const SYSTEM_JUNK = [".DS_Store", "._*", ".Spotlight-V100", "**/.Spotlight-V100/**", ".fseventsd", "**/.fseventsd/**", ".Trashes", "**/.Trashes/**",
+  ".TemporaryItems", "**/.TemporaryItems/**", ".DocumentRevisions-V100", "**/.DocumentRevisions-V100/**", "Thumbs.db", "desktop.ini",
+  "$RECYCLE.BIN", "**/$RECYCLE.BIN/**", "System Volume Information", "**/System Volume Information/**"].join(";");
+
 function normalizeJobBody(body) {
   const src = Array.isArray(body.src) ? body.src.filter(Boolean) : [];
   const dest = Array.isArray(body.dest) ? body.dest.filter(Boolean) : [];
@@ -686,6 +692,7 @@ function normalizeJobBody(body) {
     hash: HASH_TYPES.has(body.hash) ? body.hash : "xxh3",
     include: body.include != null ? String(body.include) : "",
     exclude: body.exclude != null ? String(body.exclude) : "",
+    skipSystemFiles: body.skipSystemFiles !== false,
     minSize: body.minSize != null && body.minSize !== "" ? Number(body.minSize) : null,
     maxSize: body.maxSize != null && body.maxSize !== "" ? Number(body.maxSize) : null,
     fromDate: body.fromDate || null,
@@ -723,7 +730,8 @@ function buildEngineArgs(job, srcList, destList) {
     args.push("--hash", job.hash);
   }
   if (job.include && engineHas("include")) args.push("--include", job.include);
-  if (job.exclude && engineHas("exclude")) args.push("--exclude", job.exclude);
+  const excludes = [job.exclude, job.skipSystemFiles === false ? "" : SYSTEM_JUNK].filter(Boolean).join(";");
+  if (excludes && engineHas("exclude")) args.push("--exclude", excludes);
   if (job.minSize != null && !Number.isNaN(job.minSize) && engineHas("min-size")) {
     args.push("--min-size", String(job.minSize));
   }
@@ -1244,20 +1252,19 @@ async function handleApi(req, res, pathname, searchParams) {
 
   if (req.method === "GET" && pathname === "/api/drive-targets") {
     if (!platform.capabilities().eject) return json(res, 200, { drives: [], unsupported: platform.capabilities().ejectReason });
-    let paths = searchParams.getAll("path").filter(Boolean);
-    // No paths typed (a finished job, a refreshed page): offer every mounted drive that is not the startup disk,
-    // so a card can be ejected the moment its offload is done.
-    if (!paths.length) {
-      const mounted = await listVolumes();
-      paths = mounted.filter((v) => !v.startup).map((v) => v.mount);
-    }
+    // Every external drive is always listed, plus the drive of any path that was typed, each drive once. A path on the startup
+    // disk gets no row: it cannot be ejected and a red row saying so only confused people.
+    const typed = searchParams.getAll("path").filter(Boolean);
+    const mounted = await listVolumes();
+    const paths = [...new Set([...typed, ...mounted.filter((v) => !v.startup).map((v) => v.mount || v.path).filter(Boolean)])];
     const byDisk = new Map();
     for (const inputPath of paths) {
       try {
         const drive = await driveEject.inspect(inputPath);
         if (!byDisk.has(drive.wholeDisk)) byDisk.set(drive.wholeDisk, { ...drive, paths: [] });
-        byDisk.get(drive.wholeDisk).paths.push(inputPath);
+        if (typed.includes(inputPath)) byDisk.get(drive.wholeDisk).paths.push(inputPath);
       } catch (e) {
+        if (/startup disk/i.test(e.message)) continue;
         byDisk.set(`error:${inputPath}`, { path: inputPath, state: "unavailable", reason: e.message, paths: [inputPath] });
       }
     }
@@ -1336,6 +1343,39 @@ async function handleApi(req, res, pathname, searchParams) {
       return json(res, 200, volumes.listFolders(dir, root, identity, entries));
     } catch (e) {
       return json(res, 400, { error: e.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/folders") {
+    let body;
+    try { body = await readBody(req); } catch (e) { return json(res, 400, { error: e.message }); }
+    try {
+      const entries = await volumes.loadDf({ refresh: true });
+      const current = await volumes.listVolumes({ appDir: ROOT, entries });
+      const card = current.find((v) => v.root === body.root && v.identity === body.identity);
+      if (!card) throw new Error("Selected volume changed or is unavailable; choose it again");
+      const made = volumes.createFolder(body.path, body.name, body.root, body.identity, entries, { destinationAllowed: card.destination.allowed });
+      return json(res, 200, { ...made, listing: volumes.listFolders(made.path, body.root, body.identity, entries) });
+    } catch (e) {
+      return json(res, 400, { error: e.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/reveal") {
+    // Opens a destination folder of a known job in Finder, Explorer or the file manager. Nothing else can be opened this way.
+    let body;
+    try { body = await readBody(req); } catch (e) { return json(res, 400, { error: e.message }); }
+    const job = jobs.get(String(body.jobId || ""));
+    const target = String(body.path || "");
+    const known = job && (job.dest || []).some((d) => target === d || target.startsWith(d + path.sep));
+    if (!known) return json(res, 400, { error: "that folder does not belong to this job" });
+    if (!fs.existsSync(target)) return json(res, 404, { error: "that folder does not exist (is the drive still connected?)" });
+    const cmd = platform.revealCommand(target);
+    try {
+      spawn(cmd.file, cmd.args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {}).unref();
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
     }
   }
 

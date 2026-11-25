@@ -26,7 +26,8 @@ const diskutilCache = new Map();
 function parseDf(text) {
   const rows = [];
   for (const line of String(text || "").split("\n").slice(1)) {
-    const m = line.trim().match(/^(.+?)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+(.+)$/);
+    // Only the start is trimmed: a card can be named with a trailing space, and that space is part of its mount point.
+    const m = line.replace(/^\s+/, "").replace(/\r$/, "").match(/^(.+?)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+(.+)$/);
     if (!m) continue;
     rows.push({
       filesystem: m[1],
@@ -112,6 +113,15 @@ function mountFor(entries, real) {
   for (const row of entries) {
     const hit = platform.insideMount(real, row.mount);
     if (hit && (!best || row.mount.length > best.mount.length)) best = row;
+  }
+  // A path on an external drive must never be matched to the startup disk just because its own drive was not found (an odd
+  // name, a different spelling of an accent). That made an SD card look like the OS drive. Look again loosely, and if the drive
+  // still cannot be found, say "unknown" (null), never "startup disk".
+  const external = platform.externalMountOf(real);
+  if (external && (!best || platform.startupMounts().has(best.mount))) {
+    const loose = (p) => String(p).normalize("NFC").trimEnd().toLowerCase();
+    const wanted = loose(external);
+    return entries.find((row) => loose(row.mount) === wanted) || null;
   }
   return best;
 }
@@ -281,6 +291,42 @@ async function listVolumes({ appDir, entries: providedEntries } = {}) {
     names = [...new Set(names)];
   }
   return buildVolumeCards({ names, entries, appDir });
+}
+
+/** A folder name is one plain segment: no separators, no dot names, nothing hidden, nothing a Finder or Explorer would refuse. */
+function checkFolderName(name) {
+  if (typeof name !== "string") throw new Error("a folder name is required");
+  const n = name.trim();
+  if (!n) throw new Error("type a name for the new folder");
+  if (n.length > 120) throw new Error("that folder name is too long (120 characters at most)");
+  if (n === "." || n === ".." || n.startsWith(".")) throw new Error("a folder name cannot start with a dot, it would be hidden");
+  if (/[\\/:*?"<>|\u0000-\u001f]/.test(n)) throw new Error('a folder name cannot contain  / \\ : * ? " < > |');
+  if (/[ .]$/.test(n)) throw new Error("a folder name cannot end with a dot");
+  return n;
+}
+
+/**
+ * Makes one new folder inside the selected volume. Only on a drive that is allowed as a destination, so a camera card being
+ * read is never written to. An existing folder of that name is simply used.
+ */
+function createFolder(parent, name, root, identity, entries = [], { destinationAllowed = true } = {}) {
+  const clean = checkFolderName(name);
+  if (!destinationAllowed) throw new Error("this drive is not offered as a destination, so folders cannot be made on it");
+  if (typeof parent !== "string" || !path.isAbsolute(parent)) throw new Error("an absolute parent folder is required");
+  if (typeof root !== "string" || !path.isAbsolute(root) || !identity) throw new Error("a selected volume root and identity are required");
+  const realRoot = fs.realpathSync(root);
+  const currentIdentity = identityForPath(realRoot, entries);
+  if (!currentIdentity || currentIdentity !== identity) throw new Error("Selected volume changed or is unavailable; choose it again");
+  const realParent = fs.realpathSync(parent);
+  if (!inside(realParent, realRoot)) throw new Error("folder is outside the selected volume");
+  if (!fs.statSync(realParent).isDirectory()) throw new Error("not a folder: " + parent);
+  const target = path.join(realParent, clean);
+  if (fs.existsSync(target)) {
+    if (!fs.statSync(target).isDirectory()) throw new Error(`a file named ${clean} already exists here`);
+    return { path: realOrSame(target), created: false };
+  }
+  fs.mkdirSync(target);
+  return { path: realOrSame(target), created: true };
 }
 
 /** Sub folders within the selected volume only. Symlink targets outside are omitted. */
@@ -531,8 +577,8 @@ function human(n) {
   const u = ["B", "KB", "MB", "GB", "TB"];
   let v = Number(n);
   let i = 0;
-  while (v >= 1024 && i < u.length - 1) {
-    v /= 1024;
+  while (v >= 1000 && i < u.length - 1) {
+    v /= 1000;
     i++;
   }
   return `${v < 10 && i > 0 ? v.toFixed(2) : v < 100 && i > 0 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
@@ -575,6 +621,8 @@ module.exports = {
   buildVolumeCards,
   listVolumes,
   listFolders,
+  createFolder,
+  checkFolderName,
   scanSources,
   resolvePath,
   validateJob,

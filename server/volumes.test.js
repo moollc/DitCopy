@@ -367,8 +367,8 @@ test("space check explains the sum, and the scan counts files", async () => {
   const entries = [{ filesystem: "/dev/disk9s1", totalBytes: 10000, usedBytes: 9000, availBytes: 1000, mount: "/" }];
   const [one] = V.spaceCheck([V.resolvePath(root)], scan, entries);
   assert.strictEqual(one.short, true);
-  assert.match(one.explanation, /each needs 1\.46 KB/);
-  assert.match(one.explanation, /\(.*: 1000 B \+ .*: 500 B\)/);
+  assert.match(one.explanation, /each needs 1\.50 KB/);
+  assert.match(one.explanation, /\(.*: 1\.00 KB \+ .*: 500 B\)/);
   const [ok] = V.spaceCheck([V.resolvePath(root)], scan, [{ ...entries[0], availBytes: 5000 }]);
   assert.strictEqual(ok.short, false);
 });
@@ -410,4 +410,79 @@ test("diskutil gets a long limit, because a drive that is copying answers slowly
   let seen;
   await V.diskutilUuidForMount("/Volumes/LimitDrive", { refresh: true, run: (_f, _a, options, cb) => { seen = options.timeout; setImmediate(() => cb(null, plist(pair("VolumeUUID", "CCCC1111-2222-3333-4444-555566667777")))); } });
   assert.ok(seen >= 20000, "timeout was " + seen);
+});
+
+// ---- an SD card must never be mistaken for the startup disk (reported 25 Nov 2026)
+
+const dfHeader = "Filesystem 1024-blocks Used Available Capacity Mounted on\n";
+const dfRoot = "/dev/disk3s1s1 488245288 11000000 100000000 10% /\n";
+
+test("a card named with a trailing space keeps that space, so its path still matches its drive", () => {
+  const rows = V.parseDf(dfHeader + dfRoot + "/dev/disk4s1 124000000 1000 123999000 1% /Volumes/CARD ");
+  const card = rows.find((r) => r.filesystem === "/dev/disk4s1");
+  assert.equal(card.mount, "/Volumes/CARD ");
+  assert.equal(V.mountFor(rows, "/Volumes/CARD /PRIVATE").mount, "/Volumes/CARD ");
+});
+
+test("an accented card name matches whichever way macOS spells the accent", () => {
+  const nfd = "/Volumes/CAMÉRA 1";
+  const nfc = "/Volumes/CAMÉRA 1";
+  const rows = V.parseDf(dfHeader + dfRoot + `/dev/disk4s1 124000000 1000 123999000 1% ${nfd}`);
+  assert.equal(V.mountFor(rows, nfc).filesystem, "/dev/disk4s1");
+  assert.equal(V.mountFor(rows, nfd + "/DCIM").filesystem, "/dev/disk4s1");
+});
+
+test("a path on an external drive that cannot be matched is unknown, never the startup disk", () => {
+  const rows = V.parseDf(dfHeader + dfRoot);
+  assert.equal(V.mountFor(rows, "/Volumes/SomethingNotListed/DCIM"), null);
+  assert.equal(V.mountFor(rows, "/Users/someone/Desktop").mount, "/", "ordinary paths still belong to the startup disk");
+});
+
+test("a card whose drive row is missing is shown as unknown, not as the startup disk", () => {
+  const rows = V.parseDf(dfHeader + dfRoot);
+  const cards = V.buildVolumeCards({
+    names: ["Macintosh HD", "MYSTERY CARD"], entries: rows, appDir: "/x",
+    realpath: (p) => (p.endsWith("Macintosh HD") ? "/" : p),
+    probe: () => ({ readable: true, writable: true, dev: 1 }),
+  });
+  const card = cards.find((c) => c.name === "MYSTERY CARD");
+  assert.equal(card.startup, false, "an external card is never the startup disk");
+  assert.equal(card.mount, null);
+  assert.equal(cards.find((c) => c.name === "Macintosh HD").startup, true);
+});
+
+// ---- new folders in the destination picker
+
+test("a new folder name is one plain visible segment", () => {
+  for (const ok of ["Day 1", "EFJ-261124-RioMinho-FX6-C01-JMY", "Card (2)", "CAMÉRA"]) assert.equal(V.checkFolderName(ok), ok);
+  assert.equal(V.checkFolderName("  padded  "), "padded");
+  for (const bad of ["", "   ", ".", "..", ".hidden", "a/b", "a\\b", "a:b", "what?", "star*", 'q"', "a<b", "x|y", "end.", "a\u0000b", "x".repeat(121)]) {
+    assert.throws(() => V.checkFolderName(bad), undefined, JSON.stringify(bad));
+  }
+  assert.throws(() => V.checkFolderName(undefined));
+});
+
+test("createFolder makes the folder inside the selected drive and nowhere else", () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ditcopy-newfolder-")));
+  const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ditcopy-outside-")));
+  try {
+    const uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const entries = [{ filesystem: "/dev/disk9s1", mount: root, totalBytes: 1, usedBytes: 0, availBytes: 1, volumeUuid: uuid }];
+    const identity = V.volumeIdentity(uuid);
+    const made = V.createFolder(root, "Day 1", root, identity, entries);
+    assert.equal(made.created, true);
+    assert.ok(fs.statSync(path.join(root, "Day 1")).isDirectory());
+    assert.equal(V.createFolder(root, "Day 1", root, identity, entries).created, false, "an existing folder is just used");
+    const nested = V.createFolder(path.join(root, "Day 1"), "Card A", root, identity, entries);
+    assert.equal(nested.path, path.join(root, "Day 1", "Card A"));
+    assert.throws(() => V.createFolder(outside, "x", root, identity, entries), /outside the selected volume/);
+    assert.throws(() => V.createFolder(root, "x", root, "volume-uuid:00000000-0000-0000-0000-000000000000", entries), /changed or is unavailable/);
+    assert.throws(() => V.createFolder(root, "x", root, identity, entries, { destinationAllowed: false }), /not offered as a destination/);
+    fs.writeFileSync(path.join(root, "afile"), "x");
+    assert.throws(() => V.createFolder(root, "afile", root, identity, entries), /file named afile already exists/);
+    assert.deepEqual(fs.readdirSync(outside), [], "nothing was made outside the drive");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
 });

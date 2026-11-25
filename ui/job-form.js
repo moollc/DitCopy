@@ -12,7 +12,7 @@
     if (!job || !LIVE.includes(job.status)) return null;
     if (!Array.isArray(job.src) || !job.src.length || !Array.isArray(job.dest) || !job.dest.length) return null;
     const keys = ["mode", "hash", "speed", "verify", "perfectVerify", "nonstop", "cascade", "writeMhl",
-      "writeReport", "keepAwake", "include", "exclude", "minSize", "maxSize", "fromDate", "toDate",
+      "writeReport", "keepAwake", "skipSystemFiles", "include", "exclude", "minSize", "maxSize", "fromDate", "toDate",
       "testDriveSpeed", "cooldownSeconds", "cooldownEveryGb", "cooldownDropPercent"];
     const p = { src: job.src.slice(), dest: job.dest.slice(), name: job.jobName || "" };
     for (const k of keys) if (job[k] !== undefined) p[k] = job[k];

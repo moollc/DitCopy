@@ -48,6 +48,12 @@
     pickerDest: document.getElementById("picker-dest"),
     pickerClose: document.getElementById("picker-close"),
     pickerNote: document.getElementById("picker-note"),
+    pickerNewName: document.getElementById("picker-newname"),
+    pickerNewFolder: document.getElementById("picker-newfolder"),
+    skipSystemFiles: document.getElementById("skip-system-files"),
+    history: document.getElementById("history"),
+    errorsCount: document.getElementById("errors-count"),
+    errorsFold: document.getElementById("errors-fold"),
     health: document.getElementById("health"),
     jobMeta: document.getElementById("job-meta"),
     files: document.getElementById("stat-files"),
@@ -107,8 +113,8 @@
     const u = ["B", "KB", "MB", "GB", "TB"];
     let v = Number(n);
     let i = 0;
-    while (v >= 1024 && i < u.length - 1) {
-      v /= 1024;
+    while (v >= 1000 && i < u.length - 1) {
+      v /= 1000;
       i++;
     }
     return `${v < 10 && i > 0 ? v.toFixed(2) : v < 100 && i > 0 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
@@ -162,6 +168,7 @@
       cascade: el.cascade.checked,
       writeMhl: el.writeMhl.checked,
       writeReport: el.writeReport.checked,
+      skipSystemFiles: el.skipSystemFiles.checked,
       keepAwake: el.keepAwake.checked,
       jobName: el.jobName.value.trim() || null,
       volumeBindings: [...new Set([...lines(el.src.value), ...lines(el.dest.value)])]
@@ -188,6 +195,7 @@
     if (typeof p.writeMhl === "boolean") el.writeMhl.checked = p.writeMhl;
     if (typeof p.writeReport === "boolean") el.writeReport.checked = p.writeReport;
     if (typeof p.keepAwake === "boolean") el.keepAwake.checked = p.keepAwake;
+    if (typeof p.skipSystemFiles === "boolean") el.skipSystemFiles.checked = p.skipSystemFiles;
     if (typeof p.testDriveSpeed === "boolean") el.testDriveSpeed.checked = p.testDriveSpeed;
     if (p.cooldownSeconds != null) el.cooldownSeconds.value = p.cooldownSeconds;
     if (p.cooldownEveryGb != null) el.cooldownEveryGb.value = p.cooldownEveryGb;
@@ -439,6 +447,11 @@
   function updatePickerButtons() {
     if (!pickerVolume) return;
     const roles = currentRoles();
+    const canMake = !!(pickerVolume.destination && pickerVolume.destination.allowed) && !isLocked();
+    el.pickerNewFolder.setAttribute("aria-disabled", canMake ? "false" : "true");
+    el.pickerNewFolder.title = canMake
+      ? "Makes the folder here, then opens it."
+      : (isLocked() ? "Locked while a job is running" : (pickerVolume.destination && pickerVolume.destination.reason) || "Folders can only be made on drives that can be a destination");
     for (const [btn, role] of [[el.pickerSource, "source"], [el.pickerDest, "destination"]]) {
       const st = DitRoles.buttonState(pickerVolume, role, roles, isLocked());
       const taken = st.blocked && st.label.startsWith("Selected as");
@@ -716,6 +729,9 @@
   function resetProgress() {
     seenEvents = 0;
     el.errors.innerHTML = "";
+    el.errorsCount.textContent = "";
+    el.errorsFold.open = false;
+    delete el.errorsFold.dataset.opened;
     el.summary.textContent = "—";
     el.files.textContent = "—";
     el.bytes.textContent = "—";
@@ -814,10 +830,25 @@
         meta.className = "dest-meta mono";
         const err = document.createElement("div");
         err.className = "dest-error";
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "dest-open";
+        open.textContent = "Show";
+        open.title = "Open this destination in the file manager";
+        head.appendChild(open);
         li.append(head, bar, meta, err);
-        ref = { li, phase, bar, fill, meta, err };
+        ref = { li, phase, bar, fill, meta, err, open, jobId: null };
+        open.addEventListener("click", async () => {
+          try {
+            await api("/api/reveal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: ref.jobId, path: row.name }) });
+          } catch (e) {
+            ref.err.hidden = false;
+            ref.err.textContent = e.message;
+          }
+        });
         destRows.set(row.name, ref);
       }
+      ref.jobId = job.id;
       ref.li.className = "dest tone-" + row.tone;
       ref.phase.textContent = row.label;
       ref.bar.hidden = !row.known;
@@ -836,6 +867,49 @@
     }
     for (const [name, ref] of [...destRows]) {
       if (!keep.has(name)) { ref.li.remove(); destRows.delete(name); }
+    }
+    return rows;
+  }
+
+  /** Earlier jobs, newest first. Clicking one shows it in the progress panel. While a job runs, the view stays on that job. */
+  async function loadHistory() {
+    let data;
+    try {
+      data = await api("/api/jobs");
+    } catch {
+      return;
+    }
+    const jobs = (data.jobs || []).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30);
+    el.history.innerHTML = "";
+    if (!jobs.length) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "No jobs yet";
+      el.history.appendChild(li);
+      return;
+    }
+    const base = (p) => String(p || "").split(/[\\/]/).filter(Boolean).pop() || "";
+    for (const j of jobs) {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "history-item" + (j.id === activeJobId ? " current" : "");
+      const when = new Date(j.finishedAt || j.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      const s = j.summary || {};
+      const label = j.jobName || base((j.dest || [])[0]) || j.id;
+      b.textContent = [when, label, j.state || j.status, s.copied_files != null ? `${s.copied_files} files` : "", s.bytes != null ? fmtBytes(s.bytes) : ""].filter(Boolean).join("  ·  ");
+      b.disabled = isLocked() && j.id !== activeJobId;
+      b.title = b.disabled ? "A job is running; this view stays on it" : j.id;
+      b.addEventListener("click", async () => {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        activeJobId = j.id;
+        showingFinishedJob = true;
+        resetProgress();
+        await pollJob();
+        loadHistory();
+      });
+      li.appendChild(b);
+      el.history.appendChild(li);
     }
   }
 
@@ -858,14 +932,18 @@
   }
 
   let formFilledFor = null;
+  let draftRestored = false; // the form was filled from the remembered one, so a running job may replace it
   let lastRunning = null;
   function applyJob(job) {
     // A refresh, a second window or the native app opened mid-copy: show what is being copied.
     if (formFilledFor !== job.id) {
       formFilledFor = job.id;
-      if (DitJobForm.formIsEmpty(el.src.value, el.dest.value)) {
+      if (DitJobForm.formIsEmpty(el.src.value, el.dest.value) || draftRestored) {
         const p = DitJobForm.jobToPreset(job);
-        if (p) applyPreset(p);
+        if (p) {
+          applyPreset(p);
+          draftRestored = false;
+        }
       }
     }
     if (["done", "done_with_errors", "error", "cancelled"].includes(job.status)) showingFinishedJob = true;
@@ -932,7 +1010,21 @@
       el.pct.textContent = "Planned totals not known yet";
     }
 
-    renderDestinations(job);
+    const shownRows = renderDestinations(job);
+    // The overall figures only counted finished files, so a 12 GB clip looked frozen. A destination's written bytes include the
+    // file in progress, so the slowest destination is the honest overall figure while a copy runs.
+    const knownRows = shownRows.filter((r) => r.known && r.total != null);
+    if (totalBytes && knownRows.length && knownRows.length === shownRows.length) {
+      const inflight = Math.min(...knownRows.map((r) => r.written));
+      if (inflight > (doneBytes ?? 0) && !finished) {
+        const pb = pctOf(inflight, totalBytes);
+        el.bytes.textContent = `${fmtBytes(inflight)} / ${fmtBytes(totalBytes)}` + (pb != null ? ` · ${pb}%` : "");
+        if (pb != null) {
+          el.bar.style.width = pb + "%";
+          el.pct.textContent = `${pb}% of planned bytes` + (job.passes > 1 ? ` · pass ${job.pass} of ${job.passes}` : "");
+        }
+      }
+    }
 
     const running0 = job.status === "running" || job.status === "queued";
     const stateText = DitDest.jobStateText(job);
@@ -989,6 +1081,9 @@
       }
     }
     seenEvents = events.length;
+    const errorCount = el.errors.children.length;
+    el.errorsCount.textContent = errorCount ? String(errorCount) : "";
+    if (errorCount && !el.errorsFold.dataset.opened) { el.errorsFold.open = true; el.errorsFold.dataset.opened = "1"; }
 
     if (job.summary) {
       el.summary.textContent = JSON.stringify(job.summary, null, 2);
@@ -1003,7 +1098,7 @@
     const running = ["running", "queued", "pausing", "stopping"].includes(job.status);
     const requesting = job.status === "pausing" || job.status === "stopping";
     const resumable = ["paused", "stopped", "incomplete"].includes(job.status) && !job.resumedBy;
-    if (running !== lastRunning) { lastRunning = running; scheduleDriveRefresh(); }
+    if (running !== lastRunning) { lastRunning = running; scheduleDriveRefresh(); loadHistory(); }
     el.run.disabled = running;
     el.cancel.disabled = !running;
     el.pause.disabled = job.status !== "running";
@@ -1223,6 +1318,39 @@
     el.picker.classList.add("hidden");
     pickerVolume = null;
   });
+  el.pickerNewFolder.addEventListener("click", async () => {
+    if (el.pickerNewFolder.getAttribute("aria-disabled") === "true") {
+      el.pickerNote.textContent = el.pickerNewFolder.title;
+      return;
+    }
+    const name = el.pickerNewName.value.trim();
+    if (!name) {
+      el.pickerNote.textContent = "Type a name for the new folder first.";
+      el.pickerNewName.focus();
+      return;
+    }
+    if (!pickerVolume || !pickerDir) return;
+    try {
+      const made = await api("/api/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: pickerDir, name, root: pickerVolume.root || pickerVolume.path, identity: pickerVolume.identity }),
+      });
+      el.pickerNewName.value = "";
+      await showFolder(made.path);
+      el.pickerNote.textContent = made.created
+        ? `Made ${made.path}. Use it as a destination, or make another folder inside it.`
+        : `${made.path} already exists, so it was opened.`;
+    } catch (e) {
+      el.pickerNote.textContent = e.message;
+    }
+  });
+  el.pickerNewName.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      el.pickerNewFolder.click();
+    }
+  });
   el.pickerUp.addEventListener("click", () => {
     const root = pickerVolume && (pickerVolume.root || pickerVolume.path);
     if (!pickerVolume || !pickerDir || pickerDir === root) return;
@@ -1261,6 +1389,7 @@
   setInterval(refreshHealth, 10000);
   setInterval(tickAge, 1000);
   attachRunning();
+  loadHistory();
   setInterval(attachRunning, 2000);
   loadVolumes().catch(() => {});
   loadDriveTargets().catch(() => {});
@@ -1268,5 +1397,25 @@
     loadVolumes().catch(() => {});
   }, 15000);
   loadPresets().catch(() => {});
+  // Remember the form (in this browser only), and bring last time's form back when the page opens empty.
+  const saveDraft = (() => {
+    let timer = null;
+    return () => {
+      draftRestored = false;
+      clearTimeout(timer);
+      timer = setTimeout(() => DitDraft.write(window.localStorage, formBody(false)), 500);
+    };
+  })();
+  document.addEventListener("input", saveDraft);
+  document.addEventListener("change", saveDraft);
+  try {
+    const last = DitDraft.read(window.localStorage);
+    if (last && DitJobForm.formIsEmpty(el.src.value, el.dest.value)) {
+      applyPreset(last);
+      draftRestored = true;
+    }
+  } catch {
+    /* nothing remembered */
+  }
   onPathsChanged();
 })();
