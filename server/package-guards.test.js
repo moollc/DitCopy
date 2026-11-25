@@ -81,6 +81,19 @@ test("a version given by hand makes a private draft, only a tag publishes straig
   assert.match(yml, /already exists/, "publishing a draft must not trigger a second release");
 });
 
+test("the README opens with the downloads, and only developers are told to install Node or Rust", () => {
+  const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+  const download = readme.indexOf("## Download");
+  const source = readme.indexOf("## Run from source");
+  assert.ok(download > 0 && source > download, "Download comes first, source comes after");
+  const beforeSource = readme.slice(0, source);
+  assert.doesNotMatch(beforeSource, /rustup|Install Rust|Install Node/i, "nothing before the developer section asks a normal person to install Node or Rust");
+  for (const tail of ["\\.dmg", "-setup\\.exe", "\\.deb"]) {
+    assert.match(readme, new RegExp(`releases/download/v[\\d.]+/DitCopy-[\\d.]+-[a-z0-9-]+${tail}`), `a direct download link ending ${tail}`);
+  }
+  assert.match(readme, /releases\/latest/, "a link to the releases page");
+});
+
 test("every installer is built, installed for real and tested from where it installs", () => {
   const yml = fs.readFileSync(path.join(ROOT, ".github", "workflows", "release.yml"), "utf8");
   assert.match(yml, /audit-bundle\.js --app dist\/app\/DitCopy\.app/, "the Mac app is audited");

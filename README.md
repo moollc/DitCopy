@@ -2,12 +2,23 @@
 
 DIT copy tool for macOS, Linux and Windows: recursive multi destination copy with hash verify, filters, cascade, MHL seals, and HTML and text reports.
 
-## Install
+## Download
 
-1. Install Node.js 20 or newer from https://nodejs.org.
-2. Install Rust from https://rustup.rs. DitCopy builds its copy engine on first start. If you already have a built engine, set `DITCOPY_ENGINE` to its path and skip Rust.
+Nothing else needs to be installed. Node and the copy engine are inside.
 
-## Run
+| System | Download | Then |
+|---|---|---|
+| Mac (Apple Silicon) | [DitCopy-0.1.0-macos-arm64.dmg](https://github.com/moollc/DitCopy/releases/download/v0.1.0/DitCopy-0.1.0-macos-arm64.dmg) | Open it, drag DitCopy to Applications, open DitCopy. The first time, right click it and choose Open, then Open again. |
+| Windows | [DitCopy-0.1.0-windows-x64-setup.exe](https://github.com/moollc/DitCopy/releases/download/v0.1.0/DitCopy-0.1.0-windows-x64-setup.exe) | Run it. It installs for you without an administrator prompt. If Windows SmartScreen appears, choose More info, then Run anyway. Start DitCopy from the Start menu. |
+| Linux (Ubuntu 22.04 or newer, Debian, Mint) | [DitCopy-0.1.0-linux-x64.deb](https://github.com/moollc/DitCopy/releases/download/v0.1.0/DitCopy-0.1.0-linux-x64.deb) | Open it with your software installer, or run `sudo dpkg -i DitCopy-0.1.0-linux-x64.deb`. Start DitCopy from the applications menu, or run `ditcopy`. |
+
+All files and the portable archives (unpack and run `start.command`, `start.sh` or `start.bat`) are on the [releases page](https://github.com/moollc/DitCopy/releases/latest). The apps are not signed yet, which is why macOS and Windows ask once. Intel Macs and ARM computers are not built yet.
+
+DitCopy opens as a page in your browser at http://127.0.0.1:34826. On a Mac it also has its own window. Your logs and saved jobs are kept in your user data folder, never inside the program folder.
+
+## Run from source (developers)
+
+This is only for people changing DitCopy. It needs Node.js 20 or newer (https://nodejs.org) and Rust (https://rustup.rs), and it builds the copy engine on first start.
 
 | System | Start | Stop |
 |---|---|---|
@@ -180,7 +191,7 @@ not a shared server limit.
 
 ## Native app
 
-`app/build-app.sh` builds `app/DitCopy.app`, a window around this same UI with a Dock icon and a notification when a copy finishes or needs attention. It starts the server for you. Quitting while a copy runs asks first, because the server and engine keep running without the window; use `stop.command` to stop them. Clicking a finished notification brings the window forward. The browser at http://127.0.0.1:34826 still works.
+`app/build-app.sh` builds `app/DitCopy.app` for developers. The downloadable Mac app is made by the release workflow with `app/build-app.sh --bundle`, and carries its own Node and engine. Either one is a window around this same UI with a Dock icon and a notification when a copy finishes or needs attention. It starts the server for you. Quitting while a copy runs asks first, because the server and engine keep running without the window; use `stop.command` to stop them. Clicking a finished notification brings the window forward. The browser at http://127.0.0.1:34826 still works.
 
 The server only answers requests addressed to 127.0.0.1 or localhost, and refuses writes that come from another web origin.
 
