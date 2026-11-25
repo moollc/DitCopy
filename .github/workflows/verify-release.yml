@@ -1,0 +1,40 @@
+name: Verify release
+
+# Runs when a release is published and checks it the way a stranger would: no login, no tools, just the public web.
+# It fails (and GitHub emails the repo owner) if the release is not visible, a file does not download, the notes carry no
+# recorded live check, or the README links to a download that does not exist. Installed in any repo with
+# ~/code/git-hygiene/install_release_guard.sh. Nothing here is specific to one project.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: A stranger can get it
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the published release without logging in
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -u
+          fail=0
+          bad() { echo "::error::$1"; fail=1; }
+          rel=$(curl -fsS "https://api.github.com/repos/${REPO}/releases/tags/${TAG}") || { bad "release ${TAG} is not visible to a stranger"; exit 1; }
+          [ "$(echo "$rel" | jq -r .draft)" = "false" ] || bad "release ${TAG} is still a draft"
+          [ "$(echo "$rel" | jq '.assets | length')" -gt 0 ] || bad "release ${TAG} has no files"
+          for url in $(echo "$rel" | jq -r '.assets[].browser_download_url'); do
+            code=$(curl -sIL -o /dev/null -w '%{http_code}' "$url")
+            [ "$code" = "200" ] && echo "ok   $url" || bad "$url gives HTTP $code for a stranger"
+          done
+          echo "$rel" | jq -r '.body // ""' | grep -Eq '^Live check: (passed|skipped)' || bad "the release notes carry no recorded Live check line"
+          readme=$(curl -fsS -H 'Accept: application/vnd.github.raw' "https://api.github.com/repos/${REPO}/contents/README.md?ref=${TAG}" || true)
+          for url in $(echo "$readme" | grep -Eo "https://github\.com/${REPO}/releases/(download/[^ )\"'>]+|latest|tag/[^ )\"'>]+)" | sort -u); do
+            code=$(curl -sIL -o /dev/null -w '%{http_code}' "$url")
+            [ "$code" = "200" ] && echo "ok   README link $url" || bad "the README links to $url, which gives HTTP $code"
+          done
+          exit $fail

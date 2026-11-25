@@ -29,6 +29,8 @@ jobs:
       matrix:
         include:
           - { os: macos-latest, label: macos-arm64 }
+          # Intel Macs. This is a real Intel machine, so the Intel build is run and tested for real, not just built.
+          - { os: macos-15-intel, label: macos-x64 }
           # Built on Ubuntu 22.04 so the engine runs on Linux from glibc 2.35 up. ubuntu-latest would need a newer one.
           - { os: ubuntu-22.04, label: linux-x64 }
           - { os: windows-latest, label: windows-x64 }
@@ -83,7 +85,7 @@ jobs:
           "$inner/runtime/node" scripts/smoke.js "$inner"
       - name: Make the disk image
         if: runner.os == 'macOS'
-        run: scripts/make-dmg.sh dist/app/DitCopy.app "dist/DitCopy-${VERSION}-macos-arm64.dmg"
+        run: scripts/make-dmg.sh dist/app/DitCopy.app "dist/DitCopy-${VERSION}-${{ matrix.label }}.dmg"
 
       # Linux: a Debian package, installed for real (into /opt, which the user cannot write), then tested from there
       - name: Make the Debian package
@@ -152,5 +154,5 @@ jobs:
           else
             tag="v${{ inputs.version }}"
             # A draft stays private and creates no tag until it is published, so it can be tested first.
-            gh release create "$tag" files/* --repo "${GITHUB_REPOSITORY}" --draft --target "${GITHUB_SHA}" --title "DitCopy ${{ inputs.version }}" --generate-notes
+            gh release create "$tag" files/* --repo "${GITHUB_REPOSITORY}" --draft --target "${GITHUB_SHA}" --title "DitCopy ${{ inputs.version }}" --generate-notes --notes "Live check: PENDING. Not yet run on a real machine other than the build machine."
           fi

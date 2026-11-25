@@ -94,6 +94,18 @@ test("the README opens with the downloads, and only developers are told to insta
   assert.match(readme, /releases\/latest/, "a link to the releases page");
 });
 
+test("Macs of both kinds are built and tested on their own hardware, and every release is checked as a stranger afterwards", () => {
+  const yml = fs.readFileSync(path.join(ROOT, ".github", "workflows", "release.yml"), "utf8");
+  assert.match(yml, /os: macos-latest, label: macos-arm64/, "Apple Silicon Macs");
+  assert.match(yml, /os: macos-15-intel, label: macos-x64/, "Intel Macs, on a real Intel runner");
+  assert.doesNotMatch(yml, /DitCopy-\$\{VERSION\}-macos-arm64\.dmg/, "the disk image is named for its own Mac, not always arm64");
+  assert.match(yml, /\$\{\{ matrix\.label \}\}\.dmg/, "the disk image name uses the matrix label");
+  assert.match(yml, /Live check: PENDING/, "a new draft says its live check is still pending");
+  const verify = fs.readFileSync(path.join(ROOT, ".github", "workflows", "verify-release.yml"), "utf8");
+  assert.match(verify, /types: \[published\]/, "the stranger check runs when a release is published");
+  assert.match(verify, /Live check: \(passed\|skipped\)/, "and requires a recorded live check");
+});
+
 test("every installer is built, installed for real and tested from where it installs", () => {
   const yml = fs.readFileSync(path.join(ROOT, ".github", "workflows", "release.yml"), "utf8");
   assert.match(yml, /audit-bundle\.js --app dist\/app\/DitCopy\.app/, "the Mac app is audited");
