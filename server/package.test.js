@@ -23,7 +23,7 @@ test("packaging assembles a complete copy without the tests, and refuses a launc
     const ok = spawnSync(process.execPath, [SCRIPT, out, "--engine", engine, "--node", bigNode, "--version", "9.9.9"], { encoding: "utf8" });
     assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
     const names = all(out).map((f) => path.relative(out, f).split(path.sep).join("/"));
-    for (const must of ["ditcopy.js", "start.command", "start.sh", "start.bat", "stop.bat", "LICENSE", "README-FIRST.txt", "bundle.json", "server/server.js", "server/platform.js", "ui/index.html", "ui/app.js", "presets/camera-dual.json"]) {
+    for (const must of ["ditcopy.js", "start.command", "start.sh", "start.bat", "stop.bat", "LICENSE", "README-FIRST.txt", "bundle.json", "server/server.js", "server/platform.js", "ui/index.html", "ui/app.js", "presets/camera-dual.json", "icon.ico", "icon.png"]) {
       assert.ok(names.includes(must), `missing ${must}`);
     }
     assert.ok(names.some((n) => /^engine\/ditcopy_engine(\.exe)?$/.test(n)), "engine in engine/");

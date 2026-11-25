@@ -1,9 +1,25 @@
 #!/bin/bash
-# Builds DitCopy.app next to this script. The app finds the repo through the DitCopyRoot key.
+# Builds DitCopy.app.
+#   ./build-app.sh                        a developer build next to this script, it finds this folder through the DitCopyRoot key
+#   ./build-app.sh --bundle <dir> [--out <folder>]
+#                                         a self contained app that carries the packaged copy <dir> (see scripts/package.js)
+#                                         inside itself, with no path to this machine, for downloading
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$(cd .. && pwd)"
-APP="DitCopy.app"
+BUNDLE=""
+OUT="$(pwd)"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --bundle) BUNDLE="$(cd "$2" && pwd)"; shift 2 ;;
+    --out) mkdir -p "$2"; OUT="$(cd "$2" && pwd)"; shift 2 ;;
+    *) echo "Unknown option $1"; exit 2 ;;
+  esac
+done
+APP="$OUT/DitCopy.app"
+rm -rf "$APP" 2>/dev/null || true
+VERSION="0.1"
+if [[ -n "$BUNDLE" ]]; then VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$BUNDLE/bundle.json" | head -1)"; fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp icon.icns "$APP/Contents/Resources/icon.icns"
 # Some Command Line Tools installs ship a stale second copy of the SwiftBridging module map, which
@@ -17,6 +33,12 @@ if [[ -f "$MM" ]] && cmp -s "$MM" "$(dirname "$MM")/bridging.modulemap" 2>/dev/n
   OVERLAY=(-vfsoverlay "$TMP/ov.yaml" -Xcc -ivfsoverlay -Xcc "$TMP/ov.yaml")
 fi
 swiftc -O ${OVERLAY[@]+"${OVERLAY[@]}"} -o "$APP/Contents/MacOS/DitCopy" main.swift -framework Cocoa -framework WebKit -framework UserNotifications
+ROOT_KEY="<key>DitCopyRoot</key><string>$ROOT</string>"
+if [[ -n "$BUNDLE" ]]; then
+  ROOT_KEY=""
+  mkdir -p "$APP/Contents/Resources"
+  cp -R "$BUNDLE" "$APP/Contents/Resources/ditcopy"
+fi
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -26,11 +48,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>CFBundleIconFile</key><string>icon</string>
 <key>CFBundleExecutable</key><string>DitCopy</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1</string>
+<key>CFBundleShortVersionString</key><string>$VERSION</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>NSHighResolutionCapable</key><true/>
-<key>DitCopyRoot</key><string>$ROOT</string>
+$ROOT_KEY
 </dict></plist>
 PLIST
-codesign --force --sign - "$APP" >/dev/null
-echo "Built $(pwd)/$APP"
+# Ad hoc signature: it keeps the app launchable but macOS still asks first time (right click, Open) until it is notarized.
+codesign --force --deep --sign - "$APP" >/dev/null
+echo "Built $APP"

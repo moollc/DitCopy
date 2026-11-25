@@ -8,8 +8,16 @@ import WebKit
 let port = ProcessInfo.processInfo.environment["DITCOPY_PORT"] ?? "34826"
 let baseURL = URL(string: "http://127.0.0.1:\(port)")!
 
+// A downloaded app carries a complete copy of DitCopy (its own Node and engine) inside Contents/Resources/ditcopy.
+func packagedRoot() -> URL? {
+    guard let r = Bundle.main.resourceURL?.appendingPathComponent("ditcopy"),
+          FileManager.default.fileExists(atPath: r.appendingPathComponent("bundle.json").path) else { return nil }
+    return r
+}
+
 func rootFolder() -> URL {
     if let p = ProcessInfo.processInfo.environment["DITCOPY_ROOT"] { return URL(fileURLWithPath: p) }
+    if let r = packagedRoot() { return r }
     if let p = Bundle.main.object(forInfoDictionaryKey: "DitCopyRoot") as? String { return URL(fileURLWithPath: p) }
     return Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
 }
@@ -48,13 +56,29 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelegate
     // Quitting leaves the server and engine running, so a copy carries on. Say so before the window goes.
     func applicationShouldTerminate(_ s: NSApplication) -> NSApplication.TerminateReply {
         let n = runningJobCount()
-        if n == 0 { return .terminateNow }
+        if n == 0 {
+            // A downloaded app starts its own server, so it also stops it when nothing is copying. A source build leaves it running.
+            stopServerOnQuit = packagedRoot() != nil
+            return .terminateNow
+        }
         let a = NSAlert()
         a.messageText = n == 1 ? "A copy is still running" : "\(n) copies are still running"
-        a.informativeText = "It keeps going in the background after you quit. Open DitCopy again to watch it. Use stop.command to stop everything."
+        a.informativeText = "It keeps going in the background after you quit. Open DitCopy again to watch it, or to stop it with Stop after file or Cancel now."
         a.addButton(withTitle: "Keep Open")
         a.addButton(withTitle: "Quit Anyway")
         return a.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    }
+
+    var stopServerOnQuit = false
+    func applicationWillTerminate(_ n: Notification) {
+        guard stopServerOnQuit else { return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.arguments = [rootFolder().appendingPathComponent("stop.command").path]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
+        p.waitUntilExit()
     }
 
     func runningJobCount() -> Int {
@@ -131,7 +155,9 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelegate
     func showStartFailure() {
         let a = NSAlert()
         a.messageText = "The DitCopy server did not start"
-        a.informativeText = "Look at logs/server.log in \(rootFolder().path). Node.js is required."
+        a.informativeText = packagedRoot() != nil
+            ? "Look at logs/server.log in the DitCopy folder inside ~/Library/Application Support."
+            : "Look at logs/server.log in \(rootFolder().path). Node.js is required."
         a.runModal()
         NSApp.terminate(nil)
     }

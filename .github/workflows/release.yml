@@ -2,6 +2,9 @@ name: Release
 
 # Builds a download for each system and proves each one works on its own system before it is offered.
 # Run by hand (Actions, Release, Run workflow) to get the files as artifacts. Pushing a tag such as v0.1.0 also publishes them.
+#
+# Every download is audited for leftovers from the build machine, then run with a scrubbed environment (system PATH only,
+# an empty home folder) through a real copy job. The installers are installed for real and tested from where they install.
 on:
   push:
     tags: ["v*"]
@@ -19,7 +22,8 @@ jobs:
       matrix:
         include:
           - { os: macos-latest, label: macos-arm64 }
-          - { os: ubuntu-latest, label: linux-x64 }
+          # Built on Ubuntu 22.04 so the engine runs on Linux from glibc 2.35 up. ubuntu-latest would need a newer one.
+          - { os: ubuntu-22.04, label: linux-x64 }
           - { os: windows-latest, label: windows-x64 }
     defaults:
       run:
@@ -35,31 +39,86 @@ jobs:
           workspaces: engine
       - name: Version
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then v="${GITHUB_REF_NAME#v}"; else v="dev-${GITHUB_SHA::7}"; fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then v="${GITHUB_REF_NAME#v}"; d="$v"; else v="dev-${GITHUB_SHA::7}"; d="0.0.0~dev${GITHUB_SHA::7}"; fi
           echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "DEB_VERSION=$d" >> "$GITHUB_ENV"
+          echo "DIR=dist/DitCopy-$v-${{ matrix.label }}" >> "$GITHUB_ENV"
       - name: Build the engine
         run: cargo build --release --locked
         working-directory: engine
       - name: Package a self contained copy
-        run: node scripts/package.js "dist/DitCopy-${VERSION}-${{ matrix.label }}" --version "${VERSION}"
+        run: node scripts/package.js "${DIR}" --version "${VERSION}"
       - name: Audit the packaged copy for build machine leftovers
-        run: node scripts/audit-bundle.js "dist/DitCopy-${VERSION}-${{ matrix.label }}"
+        run: node scripts/audit-bundle.js "${DIR}"
       - name: Smoke test the packaged copy
         run: |
-          d="dist/DitCopy-${VERSION}-${{ matrix.label }}"
-          if [ -x "$d/runtime/node" ]; then "$d/runtime/node" scripts/smoke.js "$d"; else "$d/runtime/node.exe" scripts/smoke.js "$d"; fi
+          if [ -x "${DIR}/runtime/node" ]; then "${DIR}/runtime/node" scripts/smoke.js "${DIR}"; else "${DIR}/runtime/node.exe" scripts/smoke.js "${DIR}"; fi
       - name: Make the archive
         run: |
           cd dist
           name="DitCopy-${VERSION}-${{ matrix.label }}"
           if [ "${{ runner.os }}" = "Windows" ]; then 7z a -tzip "${name}.zip" "${name}" > /dev/null; else tar -czf "${name}.tar.gz" "${name}"; fi
           ls -la "${name}".*
+
+      # macOS: a self contained app, audited, run from inside, then a disk image
+      - name: Build the Mac app
+        if: runner.os == 'macOS'
+        run: app/build-app.sh --bundle "${DIR}" --out dist/app
+      - name: Audit the Mac app
+        if: runner.os == 'macOS'
+        run: node scripts/audit-bundle.js --app dist/app/DitCopy.app
+      - name: Smoke test the packaged copy inside the Mac app
+        if: runner.os == 'macOS'
+        run: |
+          inner="dist/app/DitCopy.app/Contents/Resources/ditcopy"
+          "$inner/runtime/node" scripts/smoke.js "$inner"
+      - name: Make the disk image
+        if: runner.os == 'macOS'
+        run: scripts/make-dmg.sh dist/app/DitCopy.app "dist/DitCopy-${VERSION}-macos-arm64.dmg"
+
+      # Linux: a Debian package, installed for real (into /opt, which the user cannot write), then tested from there
+      - name: Make the Debian package
+        if: runner.os == 'Linux'
+        run: scripts/make-deb.sh "${DIR}" "${DEB_VERSION}" "dist/DitCopy-${VERSION}-linux-x64.deb"
+      - name: Install the Debian package and test it from where it installs
+        if: runner.os == 'Linux'
+        run: |
+          sudo dpkg -i "dist/DitCopy-${VERSION}-linux-x64.deb"
+          node scripts/audit-bundle.js /opt/ditcopy
+          /opt/ditcopy/runtime/node scripts/smoke.js /opt/ditcopy
+          sudo dpkg -r ditcopy
+
+      # Windows: an installer for the current user (no administrator prompt), installed silently, then tested from there
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup -y --no-progress
+      - name: Build the Windows installer
+        if: runner.os == 'Windows'
+        run: |
+          export DITCOPY_VERSION="${VERSION}" DITCOPY_BUNDLE="$(cygpath -w "$PWD/${DIR}")" DITCOPY_OUT="$(cygpath -w "$PWD/dist")"
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" installer/ditcopy.iss
+          ls -la dist/*setup.exe
+      - name: Install it silently and test it from where it installs
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\*setup.exe | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/DIR=C:\ditcopy-installed' -Wait
+          node scripts/audit-bundle.js C:\ditcopy-installed
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & C:\ditcopy-installed\runtime\node.exe scripts\smoke.js C:\ditcopy-installed
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Start-Process -FilePath C:\ditcopy-installed\unins000.exe -ArgumentList '/VERYSILENT' -Wait
+
       - uses: actions/upload-artifact@v4
         with:
           name: DitCopy-${{ matrix.label }}
           path: |
             dist/*.tar.gz
             dist/*.zip
+            dist/*.dmg
+            dist/*setup.exe
+            dist/*.deb
           if-no-files-found: error
 
   publish:

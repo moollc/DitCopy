@@ -45,6 +45,9 @@ function main() {
   }
   for (const d of ["server", "ui", "presets"]) fs.cpSync(path.join(ROOT, d), path.join(out, d), { recursive: true, filter: notTest });
 
+  // The icon files installers and shortcuts use.
+  fs.copyFileSync(path.join(ROOT, "app", "icon.ico"), path.join(out, "icon.ico"));
+  fs.copyFileSync(path.join(ROOT, "app", "icons", "ditcopy-256.png"), path.join(out, "icon.png"));
   fs.mkdirSync(path.join(out, "engine"), { recursive: true });
   fs.copyFileSync(engine, path.join(out, "engine", platform.engineFileName(plat)));
   fs.mkdirSync(path.join(out, "runtime"), { recursive: true });

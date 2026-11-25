@@ -72,6 +72,26 @@ test("the release builds nothing without the audit and the clean environment smo
   assert.ok(!/continue-on-error:\s*true/.test(yml), "a failing check must fail the release");
 });
 
+test("every installer is built, installed for real and tested from where it installs", () => {
+  const yml = fs.readFileSync(path.join(ROOT, ".github", "workflows", "release.yml"), "utf8");
+  assert.match(yml, /audit-bundle\.js --app dist\/app\/DitCopy\.app/, "the Mac app is audited");
+  assert.match(yml, /make-dmg\.sh/, "a disk image is made");
+  assert.match(yml, /dpkg -i/, "the Debian package is installed");
+  assert.match(yml, /smoke\.js \/opt\/ditcopy/, "and tested from /opt, which the user cannot write");
+  assert.match(yml, /\/VERYSILENT/, "the Windows installer is run for real");
+  assert.match(yml, /smoke\.js C:\\ditcopy-installed/, "and tested from where it installed");
+  assert.match(yml, /os: ubuntu-22\.04/, "Linux is built on an old enough system for older Linux to run it");
+  assert.doesNotMatch(yml, /os: ubuntu-latest[^\n]*linux-x64/, "not on ubuntu-latest, whose glibc is too new for older Linux");
+});
+
+test("the Mac app finds its own packaged copy and carries no path to the machine that built it", () => {
+  const swift = fs.readFileSync(path.join(ROOT, "app", "main.swift"), "utf8");
+  assert.match(swift, /Resources\?\.appendingPathComponent\("ditcopy"\)|resourceURL\?\.appendingPathComponent\("ditcopy"\)/, "the app looks inside itself first");
+  const build = fs.readFileSync(path.join(ROOT, "app", "build-app.sh"), "utf8");
+  assert.match(build, /--bundle/, "the build can make a self contained app");
+  assert.match(build, /ROOT_KEY=""/, "a self contained app has no DitCopyRoot key");
+});
+
 test("the smoke test runs in a scrubbed environment and the packager refuses a Node that needs the build machine", () => {
   const smoke = fs.readFileSync(path.join(ROOT, "scripts", "smoke.js"), "utf8");
   assert.match(smoke, /function cleanEnv/, "smoke must build a clean environment");
