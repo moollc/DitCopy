@@ -203,3 +203,8 @@ test("force unmounts when only watchers hold the drive, and refuses when anythin
   });
   assert.equal(rig2.calls.some(([c, a]) => c === "diskutil" && a[0] === "unmountDisk"), false, "never forced while a program writes");
 });
+
+test("a drive that is already ejected says it is not mounted, not that it is the startup disk", { skip: process.platform !== "darwin" && "eject is macOS only" }, async () => {
+  const service = createDriveEjectService(async () => { throw new Error("should not run any command"); }, async () => ({ mountPoint: "/" }));
+  await assert.rejects(service.inspect("/Volumes/DitCopyTestDriveThatIsNotMounted/EFJ"), /is not mounted, it may already be ejected/);
+});

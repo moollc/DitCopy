@@ -8,11 +8,12 @@ Nothing else needs to be installed. Node and the copy engine are inside.
 
 | System | Download | Then |
 |---|---|---|
-| Mac (Apple Silicon) | [DitCopy-0.1.0-macos-arm64.dmg](https://github.com/moollc/DitCopy/releases/download/v0.1.0/DitCopy-0.1.0-macos-arm64.dmg) | Open it, drag DitCopy to Applications, open DitCopy. The first time, right click it and choose Open, then Open again. |
-| Windows | [DitCopy-0.1.0-windows-x64-setup.exe](https://github.com/moollc/DitCopy/releases/download/v0.1.0/DitCopy-0.1.0-windows-x64-setup.exe) | Run it. It installs for you without an administrator prompt. If Windows SmartScreen appears, choose More info, then Run anyway. Start DitCopy from the Start menu. |
-| Linux (Ubuntu 22.04 or newer, Debian, Mint) | [DitCopy-0.1.0-linux-x64.deb](https://github.com/moollc/DitCopy/releases/download/v0.1.0/DitCopy-0.1.0-linux-x64.deb) | Open it with your software installer, or run `sudo dpkg -i DitCopy-0.1.0-linux-x64.deb`. Start DitCopy from the applications menu, or run `ditcopy`. |
+| Mac with Apple Silicon (M1 or newer) | [DitCopy-0.1.1-macos-arm64.dmg](https://github.com/moollc/DitCopy/releases/download/v0.1.1/DitCopy-0.1.1-macos-arm64.dmg) | Open it, drag DitCopy to Applications, open DitCopy. The first time, right click it and choose Open, then Open again. |
+| Mac with an Intel processor | [DitCopy-0.1.1-macos-x64.dmg](https://github.com/moollc/DitCopy/releases/download/v0.1.1/DitCopy-0.1.1-macos-x64.dmg) | The same steps as above. Not sure which Mac you have? Apple menu, About This Mac: "Chip" means Apple Silicon, "Processor" means Intel. |
+| Windows | [DitCopy-0.1.1-windows-x64-setup.exe](https://github.com/moollc/DitCopy/releases/download/v0.1.1/DitCopy-0.1.1-windows-x64-setup.exe) | Run it. It installs for you without an administrator prompt. If Windows SmartScreen appears, choose More info, then Run anyway. Start DitCopy from the Start menu. |
+| Linux (Ubuntu 22.04 or newer, Debian, Mint) | [DitCopy-0.1.1-linux-x64.deb](https://github.com/moollc/DitCopy/releases/download/v0.1.1/DitCopy-0.1.1-linux-x64.deb) | Open it with your software installer, or run `sudo dpkg -i DitCopy-0.1.1-linux-x64.deb`. Start DitCopy from the applications menu, or run `ditcopy`. |
 
-All files and the portable archives (unpack and run `start.command`, `start.sh` or `start.bat`) are on the [releases page](https://github.com/moollc/DitCopy/releases/latest). The apps are not signed yet, which is why macOS and Windows ask once. Intel Macs and ARM computers are not built yet.
+All files and the portable archives (unpack and run `start.command`, `start.sh` or `start.bat`) are on the [releases page](https://github.com/moollc/DitCopy/releases/latest). The apps are not signed yet, which is why macOS and Windows ask once. Windows and Linux on ARM processors are not built yet.
 
 DitCopy opens as a page in your browser at http://127.0.0.1:34826. On a Mac it also has its own window. Your logs and saved jobs are kept in your user data folder, never inside the program folder.
 

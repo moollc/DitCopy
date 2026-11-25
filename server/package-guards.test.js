@@ -92,6 +92,8 @@ test("the README opens with the downloads, and only developers are told to insta
     assert.match(readme, new RegExp(`releases/download/v[\\d.]+/DitCopy-[\\d.]+-[a-z0-9-]+${tail}`), `a direct download link ending ${tail}`);
   }
   assert.match(readme, /releases\/latest/, "a link to the releases page");
+  assert.match(readme, /DitCopy-[\d.]+-macos-arm64\.dmg/, "a download for Apple Silicon Macs");
+  assert.match(readme, /DitCopy-[\d.]+-macos-x64\.dmg/, "and one for Intel Macs");
 });
 
 test("Macs of both kinds are built and tested on their own hardware, and every release is checked as a stranger afterwards", () => {

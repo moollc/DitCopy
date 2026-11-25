@@ -1,8 +1,10 @@
 "use strict";
 
+const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
 const volumes = require("./volumes");
+const platform = require("./platform");
 
 function run(command, args, timeout = 30000) {
   return new Promise((resolve, reject) => {
@@ -159,6 +161,10 @@ function createDriveEjectService(runCommand = run, locatePath = volumes.locateVo
   async function inspect(inputPath) {
     if (typeof inputPath !== "string" || !path.isAbsolute(inputPath)) throw new Error("drive path must be absolute");
     const resolved = path.resolve(inputPath);
+    // A drive that is already gone must say so. Without this its path resolves to the startup disk, and the answer was the
+    // wrong and confusing "refusing to eject the startup disk".
+    const external = platform.externalMountOf(resolved);
+    if (external && !fs.existsSync(external)) throw new Error(`${external} is not mounted, it may already be ejected`);
     const mountPoint = await mountPointForPath(resolved);
     if (mountPoint === "/") throw new Error("refusing to eject the startup disk");
     const info = await runCommand("diskutil", ["info", "-plist", mountPoint]);
